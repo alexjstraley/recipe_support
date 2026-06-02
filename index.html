@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recipe Support</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main id="auth-screen" class="auth-screen">
+      <section class="auth-panel">
+        <div>
+          <p class="eyebrow">Private kitchen workspace</p>
+          <h1>Recipe Support</h1>
+          <p class="lede">Build shared grocery lists first, then use recipes to fill them faster.</p>
+        </div>
+
+        <form id="auth-form" class="auth-form">
+          <div class="mode-switch" role="tablist" aria-label="Authentication mode">
+            <button type="button" class="active" data-auth-mode="signin">Sign in</button>
+            <button type="button" data-auth-mode="signup">Create account</button>
+          </div>
+
+          <label>
+            Email
+            <input id="auth-email" type="email" autocomplete="email" required placeholder="you@example.com" />
+          </label>
+          <label>
+            Password
+            <input id="auth-password" type="password" autocomplete="current-password" required minlength="8" placeholder="8+ characters" />
+          </label>
+          <button class="primary" type="submit" id="auth-submit">Sign in securely</button>
+          <p id="auth-message" class="form-message" role="status"></p>
+        </form>
+      </section>
+    </main>
+
+    <main id="app-screen" class="app-screen hidden">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Recipe Support</p>
+          <h1 id="workspace-title">My Kitchen</h1>
+        </div>
+        <div class="user-actions">
+          <button id="profile-toggle" class="profile-button" type="button" aria-label="Open profile" aria-expanded="false" aria-controls="profile-panel">
+            <span class="profile-glyph" aria-hidden="true"></span>
+          </button>
+        </div>
+      </header>
+
+      <aside id="profile-panel" class="profile-panel hidden" aria-label="Profile">
+        <div class="profile-panel-heading">
+          <div>
+            <p class="eyebrow">Profile</p>
+            <h2>Account</h2>
+          </div>
+          <button id="profile-close" class="ghost small" type="button">Close</button>
+        </div>
+
+        <p id="signed-in-email" class="profile-email"></p>
+
+        <form id="account-form" class="account-form">
+          <label>
+            Email
+            <input id="account-email" type="email" autocomplete="email" required />
+          </label>
+          <label>
+            Current password
+            <input id="account-current-password" type="password" autocomplete="current-password" required placeholder="Required to save changes" />
+          </label>
+          <label>
+            New password
+            <input id="account-new-password" type="password" autocomplete="new-password" minlength="8" placeholder="Leave blank to keep current password" />
+          </label>
+          <button class="primary" type="submit">Save account</button>
+          <p id="account-message" class="form-message" role="status"></p>
+        </form>
+
+        <details class="settings-panel">
+          <summary>
+            <span>
+              <strong>Standard items</strong>
+              <small>Typeahead items and their default tags</small>
+            </span>
+          </summary>
+          <div class="standard-items-panel">
+            <form id="standard-item-form" class="standard-item-form">
+              <label>
+                Item
+                <input id="standard-item-name" list="common-item-options" placeholder="Chickpeas" />
+              </label>
+              <label>
+                Tag
+                <select id="standard-item-tag">
+                  <option value="">None</option>
+                  <option value="green">Green</option>
+                  <option value="orange">Orange</option>
+                  <option value="red">Red</option>
+                  <option value="blue">Blue</option>
+                  <option value="purple">Purple</option>
+                  <option value="yellow">Yellow</option>
+                </select>
+              </label>
+              <button class="primary small" type="submit">Save item</button>
+            </form>
+            <div id="standard-items-list" class="standard-items-list"></div>
+          </div>
+        </details>
+
+        <details class="settings-panel">
+          <summary>
+            <span>
+              <strong>Shared access</strong>
+              <small>Recipes and lists with invited email addresses</small>
+            </span>
+          </summary>
+          <div id="sharing-list" class="cards"></div>
+        </details>
+
+        <details class="settings-panel">
+          <summary>
+            <span>
+              <strong>Security model</strong>
+              <small>Production controls for accounts and sharing</small>
+            </span>
+          </summary>
+          <div class="security-grid">
+            <article>
+              <h3>Authentication</h3>
+              <p>Use managed auth with verified emails, MFA support, session rotation, and short-lived access tokens.</p>
+            </article>
+            <article>
+              <h3>Authorization</h3>
+              <p>Enforce owner, viewer, and editor permissions on every server request. Never trust client-side filtering.</p>
+            </article>
+            <article>
+              <h3>Data protection</h3>
+              <p>Store data in a private database with row-level ownership checks, encrypted backups, and audit logs.</p>
+            </article>
+            <article>
+              <h3>Sharing</h3>
+              <p>Invite by email, require account verification, and let owners revoke access instantly.</p>
+            </article>
+          </div>
+        </details>
+
+        <div class="profile-actions">
+          <button id="export-data" class="ghost" type="button">Export data</button>
+          <button id="sign-out" class="danger" type="button">Sign out</button>
+        </div>
+      </aside>
+
+      <nav class="tabs" aria-label="Workspace sections">
+        <button class="active" data-view="groceries" type="button">Grocery lists</button>
+        <button data-view="recipes" type="button">Recipes</button>
+      </nav>
+
+      <section class="workspace">
+        <section id="recipes-view" class="view">
+          <div class="section-heading">
+            <div>
+              <h2>Recipes</h2>
+              <p>Save recipes so their ingredients can support your grocery lists.</p>
+            </div>
+          </div>
+
+          <div class="recipe-shell">
+            <aside class="list-directory-panel">
+              <div class="list-directory-heading">
+                <h3>Your recipes</h3>
+                <button id="new-recipe" class="ghost small" type="button">New recipe</button>
+              </div>
+              <div id="recipes-list" class="list-directory"></div>
+            </aside>
+
+            <section class="open-list-panel">
+              <div class="open-list-heading">
+                <div>
+                  <p class="eyebrow">Open recipe</p>
+                  <h3 id="active-recipe-title">New recipe</h3>
+                </div>
+              </div>
+
+              <form id="recipe-form" class="recipe-details-form">
+                <label>
+                  Recipe name
+                  <input id="recipe-name" required placeholder="Lemon herb lentils" />
+                </label>
+                <label>
+                  Servings
+                  <input id="recipe-servings" type="number" min="1" value="4" required />
+                </label>
+                <label class="wide">
+                  Shared with
+                  <input id="recipe-shared" type="email" multiple placeholder="friend@example.com, family@example.com" />
+                </label>
+                <div class="wide">
+                  <p class="field-label">Ingredients</p>
+                  <div class="quick-add-form recipe-ingredient-form">
+                    <label>
+                      Item
+                      <input id="recipe-ingredient-item" list="common-item-options" placeholder="Red lentils" />
+                    </label>
+                    <label>
+                      Quantity
+                      <input id="recipe-ingredient-quantity" placeholder="1 cup" />
+                    </label>
+                    <label>
+                      Tag
+                      <select id="recipe-ingredient-tag">
+                        <option value="">None</option>
+                        <option value="green">Green</option>
+                        <option value="orange">Orange</option>
+                        <option value="red">Red</option>
+                        <option value="blue">Blue</option>
+                        <option value="purple">Purple</option>
+                        <option value="yellow">Yellow</option>
+                      </select>
+                    </label>
+                    <div class="form-actions">
+                      <button id="add-recipe-ingredient" class="primary" type="button">Add ingredient</button>
+                      <button id="clear-recipe-ingredient" class="ghost" type="button">Clear item</button>
+                    </div>
+                  </div>
+                  <div id="recipe-ingredients-list" class="open-list-items"></div>
+                </div>
+                <label class="wide">
+                  Instructions
+                  <textarea id="recipe-instructions" required placeholder="Simmer, season, garnish, and serve."></textarea>
+                </label>
+                <div class="form-actions wide">
+                  <button id="save-recipe" class="primary" type="submit">Save recipe</button>
+                  <button id="clear-recipe" class="ghost" type="button">New recipe</button>
+                  <button id="delete-recipe" class="danger" type="button">Delete recipe</button>
+                </div>
+              </form>
+
+              <div id="recipe-grocery-actions" class="open-list-items"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="groceries-view" class="view active-view">
+          <div class="section-heading">
+            <div>
+              <h2>Grocery lists</h2>
+              <p>Open a list, add items quickly, then check off or remove things while shopping.</p>
+            </div>
+          </div>
+
+          <div class="grocery-shell">
+            <aside class="list-directory-panel">
+              <div class="list-directory-heading">
+                <h3>Your lists</h3>
+                <button id="new-list" class="ghost small" type="button">New list</button>
+              </div>
+              <form id="list-details-form" class="list-details-form">
+                <label>
+                  List name
+                  <input id="detail-list-name" required placeholder="Whole Foods" />
+                </label>
+                <label>
+                  Shared with
+                  <input id="detail-list-shared" type="email" multiple placeholder="roommate@example.com" />
+                </label>
+                <button class="primary small" type="submit">Save list</button>
+              </form>
+              <div id="lists-list" class="list-directory"></div>
+            </aside>
+
+            <section class="open-list-panel">
+              <div class="open-list-heading">
+                <div>
+                  <p class="eyebrow">Open list</p>
+                  <h3 id="active-list-title">Start a grocery list</h3>
+                </div>
+                <button id="clear-checked" class="ghost small" type="button">Remove checked</button>
+              </div>
+
+              <form id="list-form" class="quick-add-form">
+                <label>
+                  Item
+                  <input id="list-item" list="common-item-options" placeholder="Broccoli" />
+                </label>
+                <label>
+                  Quantity
+                  <input id="list-quantity" placeholder="2 heads" />
+                </label>
+                <label>
+                  Tag
+                  <select id="list-tag">
+                    <option value="">None</option>
+                    <option value="green">Green</option>
+                    <option value="orange">Orange</option>
+                    <option value="red">Red</option>
+                    <option value="blue">Blue</option>
+                    <option value="purple">Purple</option>
+                    <option value="yellow">Yellow</option>
+                  </select>
+                </label>
+                <div class="form-actions">
+                  <button class="primary" type="submit">Add item</button>
+                  <button id="clear-list" class="ghost" type="button">Clear item</button>
+                </div>
+              </form>
+
+              <div id="active-list-items" class="open-list-items"></div>
+            </section>
+          </div>
+        </section>
+
+      </section>
+    </main>
+
+    <template id="empty-state-template">
+      <div class="empty-state">
+        <h3>Nothing here yet</h3>
+        <p>Add your first item above to get started.</p>
+      </div>
+    </template>
+
+    <datalist id="common-item-options"></datalist>
+
+    <script src="app.js"></script>
+  </body>
+</html>

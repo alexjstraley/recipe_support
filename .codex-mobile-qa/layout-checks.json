@@ -1,0 +1,76 @@
+[
+  {
+    "width": 320,
+    "metrics": {
+      "viewportWidth": 320,
+      "scrollWidth": 320,
+      "overflow": false,
+      "offenders": [
+        {
+          "tag": "button",
+          "cls": "",
+          "text": "Sharing",
+          "left": 290,
+          "right": 422,
+          "width": 132
+        },
+        {
+          "tag": "button",
+          "cls": "",
+          "text": "Security",
+          "left": 428,
+          "right": 560,
+          "width": 132
+        }
+      ]
+    },
+    "screenshot": "C:\\Users\\alexj\\Documents\\GitHub\\recipe_support\\.codex-mobile-qa\\app-320.png"
+  },
+  {
+    "width": 375,
+    "metrics": {
+      "viewportWidth": 375,
+      "scrollWidth": 375,
+      "overflow": false,
+      "offenders": [
+        {
+          "tag": "button",
+          "cls": "",
+          "text": "Sharing",
+          "left": 291,
+          "right": 423,
+          "width": 132
+        },
+        {
+          "tag": "button",
+          "cls": "",
+          "text": "Security",
+          "left": 429,
+          "right": 561,
+          "width": 132
+        }
+      ]
+    },
+    "screenshot": "C:\\Users\\alexj\\Documents\\GitHub\\recipe_support\\.codex-mobile-qa\\app-375.png"
+  },
+  {
+    "width": 768,
+    "metrics": {
+      "viewportWidth": 768,
+      "scrollWidth": 768,
+      "overflow": false,
+      "offenders": []
+    },
+    "screenshot": "C:\\Users\\alexj\\Documents\\GitHub\\recipe_support\\.codex-mobile-qa\\app-768.png"
+  },
+  {
+    "width": 1280,
+    "metrics": {
+      "viewportWidth": 1280,
+      "scrollWidth": 1280,
+      "overflow": false,
+      "offenders": []
+    },
+    "screenshot": "C:\\Users\\alexj\\Documents\\GitHub\\recipe_support\\.codex-mobile-qa\\app-1280.png"
+  }
+]
