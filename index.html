@@ -93,12 +93,13 @@
                 Tag
                 <select id="standard-item-tag">
                   <option value="">None</option>
-                  <option value="green">Green</option>
-                  <option value="orange">Orange</option>
-                  <option value="red">Red</option>
-                  <option value="blue">Blue</option>
-                  <option value="purple">Purple</option>
-                  <option value="yellow">Yellow</option>
+                  <option value="green">Veg</option>
+                  <option value="orange">Dry</option>
+                  <option value="red">Protein</option>
+                  <option value="blue">Liquid</option>
+                  <option value="purple">Frozen</option>
+                  <option value="yellow">Cheese</option>
+                  <option value="pink">Home</option>
                 </select>
               </label>
               <button class="primary small" type="submit">Save item</button>
@@ -181,6 +182,27 @@
                 </div>
               </div>
 
+              <form id="recipe-import-form" class="recipe-import-form">
+                <label>
+                  Import from webpage
+                  <input id="recipe-import-url" type="url" placeholder="https://example.com/recipe" />
+                </label>
+                <button id="import-recipe" class="ghost" type="submit">Import</button>
+                <p id="recipe-import-message" class="form-message" role="status"></p>
+              </form>
+
+              <form id="recipe-text-import-form" class="recipe-text-import-form">
+                <label>
+                  Easy add from pasted text
+                  <textarea id="recipe-import-text" placeholder="Paste recipe text here, including ingredients and instructions."></textarea>
+                </label>
+                <div class="form-actions">
+                  <button id="import-recipe-text" class="ghost" type="submit">Parse text</button>
+                  <button id="clear-recipe-text" class="ghost" type="button">Clear text</button>
+                </div>
+                <p id="recipe-text-import-message" class="form-message" role="status"></p>
+              </form>
+
               <form id="recipe-form" class="recipe-details-form">
                 <label>
                   Recipe name
@@ -209,12 +231,13 @@
                       Tag
                       <select id="recipe-ingredient-tag">
                         <option value="">None</option>
-                        <option value="green">Green</option>
-                        <option value="orange">Orange</option>
-                        <option value="red">Red</option>
-                        <option value="blue">Blue</option>
-                        <option value="purple">Purple</option>
-                        <option value="yellow">Yellow</option>
+                        <option value="green">Veg</option>
+                        <option value="orange">Dry</option>
+                        <option value="red">Protein</option>
+                        <option value="blue">Liquid</option>
+                        <option value="purple">Frozen</option>
+                        <option value="yellow">Cheese</option>
+                        <option value="pink">Home</option>
                       </select>
                     </label>
                     <div class="form-actions">
@@ -241,72 +264,135 @@
         </section>
 
         <section id="groceries-view" class="view active-view">
-          <div class="section-heading">
-            <div>
-              <h2>Grocery lists</h2>
-              <p>Open a list, add items quickly, then check off or remove things while shopping.</p>
-            </div>
-          </div>
-
-          <div class="grocery-shell">
-            <aside class="list-directory-panel">
-              <div class="list-directory-heading">
-                <h3>Your lists</h3>
+          <section class="shopping-screen">
+            <div class="shopping-toolbar">
+              <label class="list-switcher">
+                List
+                <select id="list-switcher" aria-label="Choose grocery list"></select>
+              </label>
+              <div class="shopping-toolbar-actions">
+                <button id="edit-list" class="ghost small" type="button">List settings</button>
                 <button id="new-list" class="ghost small" type="button">New list</button>
               </div>
-              <form id="list-details-form" class="list-details-form">
-                <label>
-                  List name
-                  <input id="detail-list-name" required placeholder="Whole Foods" />
-                </label>
-                <label>
-                  Shared with
-                  <input id="detail-list-shared" type="email" multiple placeholder="roommate@example.com" />
-                </label>
-                <button class="primary small" type="submit">Save list</button>
-              </form>
-              <div id="lists-list" class="list-directory"></div>
-            </aside>
+            </div>
 
-            <section class="open-list-panel">
-              <div class="open-list-heading">
+            <section class="open-list-panel shopping-panel">
+              <div class="open-list-heading shopping-heading">
                 <div>
-                  <p class="eyebrow">Open list</p>
-                  <h3 id="active-list-title">Start a grocery list</h3>
+                  <p class="eyebrow">Shopping now</p>
+                  <h2 id="active-list-title">Start a grocery list</h2>
+                  <p id="active-list-progress" class="shopping-progress"></p>
                 </div>
-                <button id="clear-checked" class="ghost small" type="button">Remove checked</button>
+                <div class="shopping-primary-actions">
+                  <button id="open-add-item" class="primary" type="button">Add item</button>
+                  <button id="toggle-manage-items" class="ghost small" type="button" aria-pressed="false">Manage</button>
+                  <button id="clear-checked" class="ghost small" type="button">Remove checked</button>
+                </div>
               </div>
-
-              <form id="list-form" class="quick-add-form">
-                <label>
-                  Item
-                  <input id="list-item" list="common-item-options" placeholder="Broccoli" />
-                </label>
-                <label>
-                  Quantity
-                  <input id="list-quantity" placeholder="2 heads" />
-                </label>
-                <label>
-                  Tag
-                  <select id="list-tag">
-                    <option value="">None</option>
-                    <option value="green">Green</option>
-                    <option value="orange">Orange</option>
-                    <option value="red">Red</option>
-                    <option value="blue">Blue</option>
-                    <option value="purple">Purple</option>
-                    <option value="yellow">Yellow</option>
-                  </select>
-                </label>
-                <div class="form-actions">
-                  <button class="primary" type="submit">Add item</button>
-                  <button id="clear-list" class="ghost" type="button">Clear item</button>
-                </div>
-              </form>
 
               <div id="active-list-items" class="open-list-items"></div>
             </section>
-          </div>
+          </section>
+
+          <dialog id="add-item-dialog" class="app-dialog">
+            <form method="dialog" class="dialog-chrome">
+              <div>
+                <p class="eyebrow">Grocery item</p>
+                <h3>Add to list</h3>
+              </div>
+              <button id="close-add-item" class="ghost small" value="cancel" type="submit">Close</button>
+            </form>
+
+            <form id="list-form" class="quick-add-form modal-form">
+              <label>
+                Item
+                <span class="typeahead-field">
+                  <input id="list-item" autocomplete="off" placeholder="Broccoli" />
+                  <span id="item-suggestions" class="typeahead-results hidden"></span>
+                </span>
+              </label>
+              <label>
+                Quantity
+                <input id="list-quantity" placeholder="2 heads" />
+              </label>
+              <input id="list-tag" type="hidden" />
+              <div class="tag-picker" aria-label="Item tag">
+                <button class="tag-choice tag-green" data-list-tag="green" type="button">Veg</button>
+                <button class="tag-choice tag-orange" data-list-tag="orange" type="button">Dry</button>
+                <button class="tag-choice tag-red" data-list-tag="red" type="button">Protein</button>
+                <button class="tag-choice tag-blue" data-list-tag="blue" type="button">Liquid</button>
+                <button class="tag-choice tag-purple" data-list-tag="purple" type="button">Frozen</button>
+                <button class="tag-choice tag-yellow" data-list-tag="yellow" type="button">Cheese</button>
+                <button class="tag-choice tag-pink" data-list-tag="pink" type="button">Home</button>
+              </div>
+              <div class="form-actions modal-actions">
+                <button class="primary" type="submit">Add item</button>
+                <button id="clear-list" class="ghost" type="button">Clear item</button>
+              </div>
+            </form>
+          </dialog>
+
+          <dialog id="edit-item-dialog" class="app-dialog">
+            <form method="dialog" class="dialog-chrome">
+              <div>
+                <p class="eyebrow">Grocery item</p>
+                <h3>Edit item</h3>
+              </div>
+              <button id="close-edit-item" class="ghost small" value="cancel" type="submit">Close</button>
+            </form>
+
+            <form id="edit-item-form" class="edit-item-form modal-form">
+              <label>
+                Item
+                <input id="edit-item-name" autocomplete="off" required />
+              </label>
+              <label>
+                Quantity
+                <input id="edit-item-quantity" />
+              </label>
+              <label>
+                Store area
+                <select id="edit-item-tag">
+                  <option value="">None</option>
+                  <option value="green">Veg</option>
+                  <option value="orange">Dry</option>
+                  <option value="red">Protein</option>
+                  <option value="blue">Liquid</option>
+                  <option value="purple">Frozen</option>
+                  <option value="yellow">Cheese</option>
+                  <option value="pink">Home</option>
+                </select>
+              </label>
+              <div class="form-actions modal-actions">
+                <button class="primary" type="submit">Save item</button>
+                <button id="remove-edit-item" class="danger" type="button">Remove item</button>
+              </div>
+            </form>
+          </dialog>
+
+          <dialog id="list-settings-dialog" class="app-dialog">
+            <form method="dialog" class="dialog-chrome">
+              <div>
+                <p class="eyebrow">List</p>
+                <h3>List settings</h3>
+              </div>
+              <button id="close-list-settings" class="ghost small" value="cancel" type="submit">Close</button>
+            </form>
+
+            <form id="list-details-form" class="list-details-form modal-form">
+              <label>
+                List name
+                <input id="detail-list-name" required placeholder="Whole Foods" />
+              </label>
+              <label>
+                Shared with
+                <input id="detail-list-shared" type="email" multiple placeholder="roommate@example.com" />
+              </label>
+              <button class="primary" type="submit">Save list</button>
+            </form>
+
+            <div id="lists-list" class="list-directory compact-list-directory"></div>
+          </dialog>
         </section>
 
       </section>

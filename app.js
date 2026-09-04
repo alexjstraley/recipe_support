@@ -75,14 +75,15 @@ const defaultState = {
   removedCommonItems: []
 };
 
-const TAGS = ["green", "orange", "red", "blue", "purple", "yellow"];
+const TAGS = ["green", "orange", "red", "blue", "purple", "yellow", "pink"];
 const TAG_LABELS = {
-  green: "Green",
-  orange: "Orange",
-  red: "Red",
-  blue: "Blue",
-  purple: "Purple",
-  yellow: "Yellow"
+  green: "Veg",
+  orange: "Dry",
+  red: "Protein",
+  blue: "Liquid",
+  purple: "Frozen",
+  yellow: "Cheese",
+  pink: "Home"
 };
 
 let state = ensureState(loadState());
@@ -91,6 +92,8 @@ let authMode = "signin";
 let editingRecipeId = null;
 let creatingRecipe = false;
 let activeListId = null;
+let editingItemRef = null;
+let manageItems = false;
 let draftRecipeIngredients = [];
 
 const $ = (selector) => document.querySelector(selector);
@@ -102,6 +105,8 @@ const authForm = $("#auth-form");
 const authMessage = $("#auth-message");
 const authSubmit = $("#auth-submit");
 const recipeForm = $("#recipe-form");
+const recipeImportForm = $("#recipe-import-form");
+const recipeTextImportForm = $("#recipe-text-import-form");
 const listForm = $("#list-form");
 const listDetailsForm = $("#list-details-form");
 const accountForm = $("#account-form");
@@ -404,6 +409,12 @@ $("#new-recipe").addEventListener("click", startNewRecipe);
 $("#delete-recipe").addEventListener("click", () => {
   if (editingRecipeId) deleteRecipe(editingRecipeId);
 });
+recipeImportForm.addEventListener("submit", importRecipeFromUrl);
+recipeTextImportForm.addEventListener("submit", importRecipeFromText);
+$("#clear-recipe-text").addEventListener("click", () => {
+  $("#recipe-import-text").value = "";
+  $("#recipe-text-import-message").textContent = "";
+});
 $("#add-recipe-ingredient").addEventListener("click", addDraftRecipeIngredient);
 $("#clear-recipe-ingredient").addEventListener("click", clearRecipeIngredientFields);
 $("#recipe-ingredient-item").addEventListener("input", () => {
@@ -429,18 +440,24 @@ listForm.addEventListener("submit", (event) => {
 
   if (!activeListId) {
     alert("Create or open a grocery list first.");
-    $("#detail-list-name").focus();
+    openListSettingsDialog();
+    return;
+  }
+
+  if (!newItem) {
+    $("#list-item").focus();
     return;
   }
 
   const list = state.lists.find((item) => item.id === activeListId);
   if (!list || !assertOwner(list)) return;
 
-  if (newItem) addGroceryItem(list, newItem, quantity, tag);
+  addGroceryItem(list, newItem, quantity, tag);
   list.updatedAt = now;
   saveState();
   clearListItemFields();
   render();
+  closeDialog("#add-item-dialog");
 });
 
 listDetailsForm.addEventListener("submit", (event) => {
@@ -476,17 +493,37 @@ listDetailsForm.addEventListener("submit", (event) => {
   activeListId = list.id;
   saveState();
   render();
-  $("#list-item").focus();
+  closeDialog("#list-settings-dialog");
 });
 
 $("#clear-list").addEventListener("click", clearListItemFields);
 $("#new-list").addEventListener("click", startNewList);
+$("#edit-list").addEventListener("click", openListSettingsDialog);
+$("#open-add-item").addEventListener("click", openAddItemDialog);
+$("#toggle-manage-items").addEventListener("click", toggleManageItems);
+$("#list-switcher").addEventListener("change", (event) => openList(event.target.value));
 $("#clear-checked").addEventListener("click", clearCheckedItems);
+$("#edit-item-form").addEventListener("submit", saveEditedItem);
+$("#remove-edit-item").addEventListener("click", removeEditingItem);
+document.querySelectorAll("[data-list-tag]").forEach((button) => {
+  button.addEventListener("click", () => setListTag(button.dataset.listTag));
+});
 $("#list-item").addEventListener("input", () => {
   applySuggestedTag("#list-item", "#list-tag");
+  syncListTagPicker();
+  renderItemSuggestions();
 });
 $("#list-item").addEventListener("change", () => {
   applySuggestedTag("#list-item", "#list-tag");
+  syncListTagPicker();
+  renderItemSuggestions();
+});
+$("#list-item").addEventListener("focus", renderItemSuggestions);
+$("#list-item").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") hideItemSuggestions();
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".typeahead-field")) hideItemSuggestions();
 });
 
 function startSession(email) {
@@ -667,17 +704,28 @@ function renderRecipeIngredients(canEdit = true) {
 function renderLists(lists) {
   const directory = $("#lists-list");
   const activeItems = $("#active-list-items");
+  const switcher = $("#list-switcher");
   directory.innerHTML = "";
   activeItems.innerHTML = "";
+  switcher.innerHTML = "";
+  switcher.disabled = !lists.length;
 
   if (!lists.length) {
     $("#active-list-title").textContent = "Start a grocery list";
+    $("#active-list-progress").textContent = "Create a list to start shopping.";
     $("#detail-list-name").value = "";
     $("#detail-list-shared").value = "";
+    switcher.innerHTML = `<option value="">No lists yet</option>`;
     addEmpty(directory);
     addEmpty(activeItems);
     return;
   }
+
+  switcher.innerHTML = lists.map((list) => `
+    <option value="${escapeHtml(list.id)}" ${list.id === activeListId ? "selected" : ""}>
+      ${escapeHtml(list.name)}
+    </option>
+  `).join("");
 
   lists.forEach((list) => {
     const button = document.createElement("button");
@@ -705,39 +753,50 @@ function renderActiveList(list) {
   $("#active-list-title").textContent = list.name;
   $("#detail-list-name").value = list.name;
   $("#detail-list-shared").value = list.sharedWith.join(", ");
+  const remaining = list.items.filter((item) => !item.done).length;
+  const completed = list.items.length - remaining;
+  $("#active-list-progress").textContent = list.items.length
+    ? `${remaining} remaining, ${completed} checked off`
+    : "No items yet.";
+  $("#toggle-manage-items").setAttribute("aria-pressed", String(manageItems));
+  $("#toggle-manage-items").textContent = manageItems ? "Done" : "Manage";
 
   const detail = document.createElement("article");
-  detail.className = "card active-list-card";
+  detail.className = `active-list-card shopping-list-card ${manageItems ? "manage-mode" : ""}`;
   detail.innerHTML = `
-    <div class="pill-row">
+    <div class="pill-row shopping-meta">
       <span class="pill">${owned(list) ? "Owner" : "Shared"}</span>
       ${list.sharedWith.map((email) => `<span class="pill">${escapeHtml(email)}</span>`).join("")}
     </div>
     <ul class="items shopping-items">
       ${sortedItems(list).map((item) => `
         <li class="item-row ${item.done ? "done" : ""} ${item.tag ? `tag-${escapeHtml(item.tag)}` : ""}">
-          <span class="item-main">
-            ${item.quantity ? `<span class="item-quantity">${escapeHtml(item.quantity)}</span>` : ""}
-            <span>${escapeHtml(item.name)}</span>
-          </span>
-          <span class="item-actions">
+          <button class="item-tap-target" data-shopping-item="${list.id}:${item.id}" type="button" aria-pressed="${item.done}">
+            <span class="item-main">
+              <span class="item-name">${escapeHtml(item.name)}</span>
+              <span class="item-subline">
+                ${item.quantity ? `<span class="item-quantity">${escapeHtml(item.quantity)}</span>` : ""}
+                ${item.tag ? `<span class="tag-pill tag-${escapeHtml(item.tag)}">${escapeHtml(TAG_LABELS[item.tag])}</span>` : ""}
+              </span>
+            </span>
+          </button>
+          ${manageItems ? `<span class="item-actions">
             <select class="tag-select" data-tag-item="${list.id}:${item.id}" aria-label="Tag ${escapeHtml(item.name)}">
               ${tagOptions(item.tag)}
             </select>
-            <button class="ghost small" data-toggle-item="${list.id}:${item.id}" type="button">${item.done ? "Undo" : "Done"}</button>
             <button class="danger small" data-remove-item="${list.id}:${item.id}" type="button">Remove</button>
-          </span>
+          </span>` : ""}
         </li>
-      `).join("") || `<li class="empty-inline">Add the first item above.</li>`}
+      `).join("") || `<li class="empty-inline">Tap Add item when you are ready.</li>`}
     </ul>
-    <div class="card-actions">
+    ${manageItems ? `<div class="card-actions">
       <button class="danger small" data-delete-list="${list.id}" type="button">Delete list</button>
-    </div>
+    </div>` : ""}
   `;
   container.append(detail);
 
   container.querySelectorAll("[data-delete-list]").forEach((button) => button.addEventListener("click", () => deleteList(button.dataset.deleteList)));
-  container.querySelectorAll("[data-toggle-item]").forEach((button) => button.addEventListener("click", () => toggleItem(button.dataset.toggleItem)));
+  container.querySelectorAll("[data-shopping-item]").forEach(attachShoppingItemInteraction);
   container.querySelectorAll("[data-remove-item]").forEach((button) => button.addEventListener("click", () => removeItem(button.dataset.removeItem)));
   container.querySelectorAll("[data-tag-item]").forEach((select) => select.addEventListener("change", () => tagItem(select.dataset.tagItem, select.value)));
 }
@@ -826,7 +885,6 @@ function openList(listId) {
   if (!list || !canAccess(list)) return;
   activeListId = listId;
   render();
-  $("#list-item").focus();
 }
 
 function deleteList(listId) {
@@ -843,9 +901,101 @@ function toggleItem(value) {
   const list = state.lists.find((item) => item.id === listId);
   if (!list || !assertOwner(list)) return;
   const item = list.items.find((entry) => entry.id === itemId);
+  if (!item) return;
   item.done = !item.done;
   list.updatedAt = new Date().toISOString();
   saveState();
+  render();
+}
+
+function attachShoppingItemInteraction(button) {
+  let timer = null;
+  let longPressed = false;
+  const value = button.dataset.shoppingItem;
+
+  const clearTimer = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+  };
+
+  button.addEventListener("pointerdown", () => {
+    longPressed = false;
+    clearTimer();
+    timer = setTimeout(() => {
+      longPressed = true;
+      openEditItemDialog(value);
+    }, 550);
+  });
+
+  ["pointerup", "pointercancel", "pointerleave"].forEach((eventName) => {
+    button.addEventListener(eventName, clearTimer);
+  });
+
+  button.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
+
+  button.addEventListener("click", (event) => {
+    if (longPressed) {
+      event.preventDefault();
+      longPressed = false;
+      return;
+    }
+    toggleItem(value);
+  });
+}
+
+function openEditItemDialog(value) {
+  const [listId, itemId] = value.split(":");
+  const list = state.lists.find((item) => item.id === listId);
+  if (!list || !assertOwner(list)) return;
+  const item = list.items.find((entry) => entry.id === itemId);
+  if (!item) return;
+
+  editingItemRef = value;
+  $("#edit-item-name").value = item.name;
+  $("#edit-item-quantity").value = item.quantity || "";
+  $("#edit-item-tag").value = normalizeTag(item.tag);
+  openDialog("#edit-item-dialog");
+  $("#edit-item-name").focus();
+}
+
+function saveEditedItem(event) {
+  event.preventDefault();
+  if (!editingItemRef) return;
+  const [listId, itemId] = editingItemRef.split(":");
+  const list = state.lists.find((item) => item.id === listId);
+  if (!list || !assertOwner(list)) return;
+  const item = list.items.find((entry) => entry.id === itemId);
+  if (!item) return;
+
+  const name = $("#edit-item-name").value.trim();
+  if (!name) {
+    $("#edit-item-name").focus();
+    return;
+  }
+
+  item.name = name;
+  item.quantity = $("#edit-item-quantity").value.trim();
+  item.tag = normalizeTag($("#edit-item-tag").value);
+  if (item.tag) rememberTag(item.name, item.tag);
+  learnStandardItem(item.name, item.tag);
+  list.updatedAt = new Date().toISOString();
+  saveState();
+  closeDialog("#edit-item-dialog");
+  editingItemRef = null;
+  render();
+}
+
+function removeEditingItem() {
+  if (!editingItemRef) return;
+  removeItem(editingItemRef);
+  closeDialog("#edit-item-dialog");
+  editingItemRef = null;
+}
+
+function toggleManageItems() {
+  manageItems = !manageItems;
   render();
 }
 
@@ -886,12 +1036,14 @@ function clearCheckedItems() {
 function startNewList() {
   activeListId = null;
   $("#active-list-title").textContent = "Start a grocery list";
+  $("#active-list-progress").textContent = "";
   $("#detail-list-name").value = "";
   $("#detail-list-shared").value = "";
   clearListItemFields();
   $("#active-list-items").innerHTML = "";
   addEmpty($("#active-list-items"));
   renderListSelection();
+  openListSettingsDialog();
   $("#detail-list-name").focus();
 }
 
@@ -909,6 +1061,233 @@ function startNewRecipe() {
 
 function renderRecipeSelection() {
   document.querySelectorAll("[data-open-recipe]").forEach((button) => button.classList.remove("active"));
+}
+
+async function importRecipeFromUrl(event) {
+  event.preventDefault();
+  const url = $("#recipe-import-url").value.trim();
+  const message = $("#recipe-import-message");
+  if (!url) {
+    $("#recipe-import-url").focus();
+    return;
+  }
+
+  message.classList.remove("success");
+  message.textContent = "Importing recipe...";
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`The page returned ${response.status}.`);
+    const html = await response.text();
+    const parsedRecipe = parseRecipePage(html, url);
+
+    if (!parsedRecipe.ingredients.length && !parsedRecipe.instructions) {
+      throw new Error("I could not find recipe ingredients or instructions on that page.");
+    }
+
+    applyImportedRecipe(parsedRecipe);
+    message.classList.add("success");
+    message.textContent = `Imported ${parsedRecipe.title || "recipe"}. Review it, then save.`;
+  } catch (error) {
+    message.textContent = `Could not import this page. Some sites block browser-side crawling; a backend crawler would be needed. ${error.message}`;
+  }
+}
+
+function importRecipeFromText(event) {
+  event.preventDefault();
+  const text = $("#recipe-import-text").value.trim();
+  const message = $("#recipe-text-import-message");
+  if (!text) {
+    $("#recipe-import-text").focus();
+    return;
+  }
+
+  message.classList.remove("success");
+  const parsedRecipe = parseRecipeText(text);
+  if (!parsedRecipe.ingredients.length && !parsedRecipe.instructions) {
+    message.textContent = "I could not find ingredients or instructions in that text.";
+    return;
+  }
+
+  applyImportedRecipe(parsedRecipe);
+  message.classList.add("success");
+  message.textContent = `Parsed ${parsedRecipe.title || "recipe"}. Review it, then save.`;
+}
+
+function parseRecipeText(text) {
+  const lines = text
+    .replace(/\r/g, "")
+    .split("\n")
+    .map(cleanText)
+    .filter(Boolean);
+  const title = inferRecipeTitle(lines);
+  const servings = parseServings(lines.find((line) => /servings?|yield/i.test(line)) || "");
+  const sections = splitRecipeTextSections(lines);
+  const ingredients = sections.ingredients.map(parseImportedIngredient).filter((ingredient) => ingredient.name);
+
+  return {
+    title,
+    servings,
+    ingredients,
+    instructions: sections.instructions.join("\n")
+  };
+}
+
+function inferRecipeTitle(lines) {
+  const firstMeaningfulLine = lines.find((line) => !/^(ingredients?|instructions?|directions?|method|steps?|servings?|yield)\b/i.test(line));
+  return firstMeaningfulLine || "Imported recipe";
+}
+
+function splitRecipeTextSections(lines) {
+  let mode = "title";
+  const ingredients = [];
+  const instructions = [];
+  const ingredientHeading = /^(ingredients?|what you(?:'|’)ll need)\b/i;
+  const instructionHeading = /^(instructions?|directions?|method|preparation|steps?)\b/i;
+  const stopHeading = /^(notes?|nutrition|tips?)\b/i;
+
+  lines.forEach((line) => {
+    if (ingredientHeading.test(line)) {
+      mode = "ingredients";
+      return;
+    }
+    if (instructionHeading.test(line)) {
+      mode = "instructions";
+      return;
+    }
+    if (stopHeading.test(line)) {
+      mode = "other";
+      return;
+    }
+    if (mode === "ingredients") ingredients.push(stripListMarker(line));
+    if (mode === "instructions") instructions.push(stripListMarker(line));
+  });
+
+  if (!ingredients.length || !instructions.length) {
+    return inferRecipeTextSections(lines, ingredients, instructions);
+  }
+
+  return {
+    ingredients: uniqueLines(ingredients),
+    instructions: uniqueLines(instructions)
+  };
+}
+
+function inferRecipeTextSections(lines, existingIngredients, existingInstructions) {
+  const ingredients = [...existingIngredients];
+  const instructions = [...existingInstructions];
+  const likelyIngredient = /^[-*•]?\s*(?:\d+|[¼½¾⅓⅔⅛⅜⅝⅞])|(?:cup|tbsp|tsp|oz|lb|g|kg|ml|clove|bunch|pinch)s?\b/i;
+  const likelyInstruction = /^(?:\d+[\.)]|step\s+\d+|[-*•])\s+|(?:preheat|mix|stir|cook|bake|simmer|add|combine|serve|whisk|chop|heat)\b/i;
+
+  lines.forEach((line, index) => {
+    if (index === 0 || /^(ingredients?|instructions?|directions?|method|steps?|servings?|yield)\b/i.test(line)) return;
+    const cleanLine = stripListMarker(line);
+    if (!existingIngredients.length && likelyIngredient.test(line) && !/[.!?]$/.test(line)) {
+      ingredients.push(cleanLine);
+      return;
+    }
+    if (!existingInstructions.length && likelyInstruction.test(line)) {
+      instructions.push(cleanLine);
+    }
+  });
+
+  return {
+    ingredients: uniqueLines(ingredients),
+    instructions: uniqueLines(instructions)
+  };
+}
+
+function stripListMarker(line) {
+  return cleanText(line.replace(/^[-*•]\s*/, "").replace(/^\d+[\.)]\s*/, ""));
+}
+
+function parseRecipePage(html, url) {
+  const document = new DOMParser().parseFromString(html, "text/html");
+  const structuredRecipe = findStructuredRecipe(document);
+  if (structuredRecipe) return structuredRecipeToRecipe(structuredRecipe, document, url);
+  return fallbackRecipeFromDocument(document, url);
+}
+
+function findStructuredRecipe(document) {
+  const scripts = [...document.querySelectorAll('script[type="application/ld+json"]')];
+  for (const script of scripts) {
+    try {
+      const json = JSON.parse(script.textContent.trim());
+      const recipe = findRecipeNode(json);
+      if (recipe) return recipe;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function findRecipeNode(value) {
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const match = findRecipeNode(item);
+      if (match) return match;
+    }
+    return null;
+  }
+  if (typeof value !== "object") return null;
+  const type = value["@type"];
+  const types = Array.isArray(type) ? type : [type];
+  if (types.some((item) => String(item).toLowerCase() === "recipe")) return value;
+  return findRecipeNode(value["@graph"]);
+}
+
+function structuredRecipeToRecipe(recipe, document, url) {
+  const ingredients = arrayify(recipe.recipeIngredient).map(parseImportedIngredient).filter((ingredient) => ingredient.name);
+  const instructions = recipeInstructionsToText(recipe.recipeInstructions);
+  return {
+    title: cleanText(recipe.name) || pageTitle(document, url),
+    servings: parseServings(recipe.recipeYield),
+    ingredients,
+    instructions
+  };
+}
+
+function fallbackRecipeFromDocument(document, url) {
+  const ingredientText = uniqueLines([
+    ...textsFrom(document, '[class*="ingredient" i] li'),
+    ...textsFrom(document, '[class*="ingredient" i]'),
+    ...textsFrom(document, '[itemprop="recipeIngredient"]')
+  ]).filter((line) => line.length > 1);
+
+  const instructionText = uniqueLines([
+    ...textsFrom(document, '[class*="instruction" i] li'),
+    ...textsFrom(document, '[class*="direction" i] li'),
+    ...textsFrom(document, '[class*="method" i] li'),
+    ...textsFrom(document, '[itemprop="recipeInstructions"]')
+  ]);
+
+  return {
+    title: pageTitle(document, url),
+    servings: 4,
+    ingredients: ingredientText.map(parseImportedIngredient).filter((ingredient) => ingredient.name),
+    instructions: instructionText.join("\n")
+  };
+}
+
+function applyImportedRecipe(recipe) {
+  editingRecipeId = null;
+  creatingRecipe = true;
+  renderRecipeSelection();
+  clearRecipeFields();
+  $("#active-recipe-title").textContent = recipe.title || "Imported recipe";
+  $("#recipe-name").value = recipe.title || "";
+  $("#recipe-servings").value = recipe.servings || 4;
+  $("#recipe-instructions").value = recipe.instructions || "";
+  draftRecipeIngredients = recipe.ingredients.map((ingredient) => ({
+    id: id("ingredient"),
+    name: ingredient.name,
+    quantity: ingredient.quantity,
+    tag: normalizeTag(ingredient.tag) || getSuggestedTag(ingredient.name)
+  }));
+  draftRecipeIngredients.forEach((ingredient) => learnStandardItem(ingredient.name, ingredient.tag));
+  renderRecipeIngredients(true);
 }
 
 function clearRecipeFields() {
@@ -964,8 +1343,116 @@ function clearRecipeIngredientFields() {
 function clearListItemFields() {
   $("#list-item").value = "";
   $("#list-quantity").value = "";
-  $("#list-tag").value = "";
+  setListTag("");
+  hideItemSuggestions();
+  if ($("#add-item-dialog").open) $("#list-item").focus();
+}
+
+function openAddItemDialog() {
+  if (!activeListId) {
+    openListSettingsDialog();
+    return;
+  }
+  openDialog("#add-item-dialog");
   $("#list-item").focus();
+}
+
+function openListSettingsDialog() {
+  openDialog("#list-settings-dialog");
+  $("#detail-list-name").focus();
+}
+
+function openDialog(selector) {
+  const dialog = $(selector);
+  if (!dialog.open) dialog.showModal();
+}
+
+function closeDialog(selector) {
+  const dialog = $(selector);
+  if (dialog.open) dialog.close();
+}
+
+function renderItemSuggestions() {
+  const container = $("#item-suggestions");
+  const query = normalizeItemName($("#list-item").value);
+  if (!query) {
+    hideItemSuggestions();
+    return;
+  }
+
+  const matches = itemSuggestionCandidates()
+    .filter((item) => normalizeItemName(item.name).includes(query))
+    .slice(0, 8);
+
+  container.innerHTML = "";
+  if (!matches.length) {
+    hideItemSuggestions();
+    return;
+  }
+
+  matches.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "typeahead-option";
+    button.dataset.itemName = item.name;
+    button.dataset.itemTag = item.tag;
+    button.innerHTML = `
+      <span>${escapeHtml(item.name)}</span>
+      ${item.tag ? `<span class="tag-pill tag-${escapeHtml(item.tag)}">${escapeHtml(TAG_LABELS[item.tag])}</span>` : ""}
+    `;
+    button.addEventListener("click", () => chooseItemSuggestion(item.name, item.tag));
+    container.append(button);
+  });
+
+  container.classList.remove("hidden");
+}
+
+function hideItemSuggestions() {
+  $("#item-suggestions").classList.add("hidden");
+}
+
+function chooseItemSuggestion(name, tag) {
+  $("#list-item").value = name;
+  setListTag(tag);
+  hideItemSuggestions();
+  $("#list-quantity").focus();
+}
+
+function setListTag(tag) {
+  $("#list-tag").value = normalizeTag(tag);
+  syncListTagPicker();
+}
+
+function syncListTagPicker() {
+  const selectedTag = normalizeTag($("#list-tag").value);
+  document.querySelectorAll("[data-list-tag]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.listTag === selectedTag);
+  });
+}
+
+function itemSuggestionCandidates() {
+  const seen = new Map();
+  const addCandidate = (name, tag = "") => {
+    const trimmedName = String(name || "").trim();
+    if (!trimmedName) return;
+    const normalizedName = normalizeItemName(trimmedName);
+    const normalizedTag = normalizeTag(tag) || getSuggestedTag(trimmedName);
+    if (!seen.has(normalizedName)) {
+      seen.set(normalizedName, { name: trimmedName, tag: normalizedTag });
+      return;
+    }
+    const existing = seen.get(normalizedName);
+    if (!existing.tag && normalizedTag) existing.tag = normalizedTag;
+  };
+
+  state.commonItems.forEach((item) => addCandidate(item.name, item.tag));
+  state.lists
+    .filter(canAccess)
+    .flatMap((list) => list.items || [])
+    .forEach((item) => addCandidate(item.name, item.tag));
+  Object.entries(userTags()).forEach(([name, tag]) => addCandidate(name, tag));
+
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function sortedItems(list) {
@@ -986,9 +1473,66 @@ function tagSortValue(tag) {
 function tagOptions(selectedTag) {
   const normalizedSelectedTag = normalizeTag(selectedTag);
   return [
-    `<option value="">No tag</option>`,
+    `<option value="">None</option>`,
     ...TAGS.map((tag) => `<option value="${tag}" ${tag === normalizedSelectedTag ? "selected" : ""}>${TAG_LABELS[tag]}</option>`)
   ].join("");
+}
+
+function arrayify(value) {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function pageTitle(document, url) {
+  return cleanText(document.querySelector("h1")?.textContent || document.title || new URL(url).hostname);
+}
+
+function textsFrom(document, selector) {
+  return [...document.querySelectorAll(selector)]
+    .map((element) => cleanText(element.textContent))
+    .filter(Boolean);
+}
+
+function uniqueLines(lines) {
+  const seen = new Set();
+  return lines.filter((line) => {
+    const key = line.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function parseServings(value) {
+  const text = cleanText(arrayify(value).join(" "));
+  const match = text.match(/\d+/);
+  return match ? Number(match[0]) : 4;
+}
+
+function recipeInstructionsToText(instructions) {
+  return arrayify(instructions)
+    .flatMap((instruction) => {
+      if (typeof instruction === "string") return [instruction];
+      if (!instruction || typeof instruction !== "object") return [];
+      if (instruction.itemListElement) return arrayify(instruction.itemListElement).map((item) => item.text || item.name || item);
+      return [instruction.text || instruction.name || ""];
+    })
+    .map(cleanText)
+    .filter(Boolean)
+    .join("\n");
+}
+
+function parseImportedIngredient(line) {
+  const text = cleanText(line);
+  const match = text.match(/^((?:\d+[\d\s./-]*|[¼½¾⅓⅔⅛⅜⅝⅞]+)\s*(?:cups?|tbsp|tablespoons?|tsp|teaspoons?|oz|ounces?|lb|lbs|pounds?|g|grams?|kg|ml|l|liters?|cloves?|heads?|bunch(?:es)?|cans?|packages?|pinch(?:es)?|slices?)?)\s+(.+)$/i);
+  const quantity = cleanText(match?.[1] || "");
+  const name = cleanText(match?.[2] || text);
+  const tag = getSuggestedTag(name);
+  return { name, quantity, tag };
 }
 
 function renderStandardItems() {
