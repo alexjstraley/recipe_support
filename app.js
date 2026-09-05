@@ -95,6 +95,8 @@ let activeListId = null;
 let editingItemRef = null;
 let manageItems = false;
 let draftRecipeIngredients = [];
+let planningRecipes = false;
+let plannedRecipeIds = new Set();
 
 const $ = (selector) => document.querySelector(selector);
 const emptyTemplate = $("#empty-state-template");
@@ -406,6 +408,7 @@ recipeForm.addEventListener("submit", (event) => {
 
 $("#clear-recipe").addEventListener("click", startNewRecipe);
 $("#new-recipe").addEventListener("click", startNewRecipe);
+$("#plan-recipes").addEventListener("click", toggleRecipePlanning);
 $("#delete-recipe").addEventListener("click", () => {
   if (editingRecipeId) deleteRecipe(editingRecipeId);
 });
@@ -561,6 +564,7 @@ function render() {
   if (!editingRecipeId && recipes.length && !creatingRecipe) editingRecipeId = recipes[0].id;
   if (activeListId && !lists.some((list) => list.id === activeListId)) activeListId = null;
   if (!activeListId && lists.length) activeListId = lists[0].id;
+  plannedRecipeIds = new Set([...plannedRecipeIds].filter((recipeId) => recipes.some((recipe) => recipe.id === recipeId)));
 
   renderRecipes(recipes, lists);
   renderLists(lists);
@@ -593,7 +597,37 @@ function migrateRecordEmail(record, previousEmail, nextEmail) {
 
 function renderRecipes(recipes, lists) {
   const container = $("#recipes-list");
+  const planPanel = $("#recipe-plan-panel");
+  const planButton = $("#plan-recipes");
+  const editableLists = lists.filter(owned);
+  const plannedRecipes = recipes.filter((recipe) => plannedRecipeIds.has(recipe.id));
+  const plannedIngredientCount = plannedRecipes.reduce((total, recipe) => total + normalizeRecipeIngredients(recipe.ingredients).length, 0);
+  const listOptions = editableLists.map((list) => `<option value="${escapeHtml(list.id)}" ${list.id === activeListId ? "selected" : ""}>${escapeHtml(list.name)}</option>`).join("");
+
   container.innerHTML = "";
+  planButton.setAttribute("aria-pressed", String(planningRecipes));
+  planButton.textContent = planningRecipes ? "Done" : "Plan week";
+  planPanel.classList.toggle("hidden", !planningRecipes);
+  planPanel.innerHTML = planningRecipes ? `
+    <div class="recipe-plan-summary">
+      <strong>${plannedRecipes.length} selected</strong>
+      <span>${plannedIngredientCount} ingredients</span>
+    </div>
+    <label>
+      Add to
+      <select id="recipe-plan-target-list" ${editableLists.length ? "" : "disabled"}>
+        ${listOptions || `<option value="">Create a grocery list first</option>`}
+      </select>
+    </label>
+    <div class="recipe-plan-actions">
+      <button id="add-planned-recipes" class="primary small" type="button" ${plannedRecipes.length && editableLists.length ? "" : "disabled"}>Add plan</button>
+      <button id="clear-planned-recipes" class="ghost small" type="button" ${plannedRecipes.length ? "" : "disabled"}>Clear</button>
+    </div>
+  ` : "";
+
+  $("#add-planned-recipes")?.addEventListener("click", () => addPlannedRecipesToList($("#recipe-plan-target-list").value));
+  $("#clear-planned-recipes")?.addEventListener("click", clearPlannedRecipes);
+
   if (!recipes.length) {
     addEmpty(container);
     renderActiveRecipe(null, lists);
@@ -602,19 +636,22 @@ function renderRecipes(recipes, lists) {
 
   recipes.forEach((recipe) => {
     const button = document.createElement("button");
-    button.className = `list-chip ${recipe.id === editingRecipeId ? "active" : ""}`;
+    const isPlanned = plannedRecipeIds.has(recipe.id);
+    button.className = `list-chip recipe-chip ${recipe.id === editingRecipeId ? "active" : ""} ${isPlanned ? "planned" : ""}`;
     button.type = "button";
     button.dataset.openRecipe = recipe.id;
+    button.setAttribute("aria-pressed", String(isPlanned));
     button.innerHTML = `
       <span>
         <strong>${escapeHtml(recipe.title)}</strong>
         <small>${recipe.servings} servings &middot; ${normalizeRecipeIngredients(recipe.ingredients).length} ingredients</small>
       </span>
+      <span class="recipe-select-indicator" aria-hidden="true">${isPlanned ? "Selected" : "Select"}</span>
     `;
     container.append(button);
   });
 
-  container.querySelectorAll("[data-open-recipe]").forEach((button) => button.addEventListener("click", () => openRecipe(button.dataset.openRecipe)));
+  container.querySelectorAll("[data-open-recipe]").forEach(attachRecipeChipInteraction);
   renderActiveRecipe(recipes.find((recipe) => recipe.id === editingRecipeId) || null, lists);
 }
 
@@ -830,6 +867,65 @@ function openRecipe(recipeId) {
   $("#recipe-name").focus();
 }
 
+function attachRecipeChipInteraction(button) {
+  let longPressTimer = null;
+  let longPressHandled = false;
+  const recipeId = button.dataset.openRecipe;
+
+  const cancelLongPress = () => {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  };
+
+  button.addEventListener("pointerdown", () => {
+    longPressHandled = false;
+    cancelLongPress();
+    longPressTimer = setTimeout(() => {
+      longPressHandled = true;
+      setRecipePlanning(true);
+      togglePlannedRecipe(recipeId);
+    }, 520);
+  });
+  button.addEventListener("pointerup", cancelLongPress);
+  button.addEventListener("pointercancel", cancelLongPress);
+  button.addEventListener("pointerleave", cancelLongPress);
+  button.addEventListener("click", () => {
+    if (longPressHandled) return;
+    if (planningRecipes) {
+      togglePlannedRecipe(recipeId);
+      return;
+    }
+    openRecipe(recipeId);
+  });
+}
+
+function toggleRecipePlanning() {
+  setRecipePlanning(!planningRecipes);
+}
+
+function setRecipePlanning(enabled) {
+  planningRecipes = enabled;
+  if (!planningRecipes) plannedRecipeIds.clear();
+  render();
+}
+
+function togglePlannedRecipe(recipeId) {
+  const recipe = state.recipes.find((item) => item.id === recipeId);
+  if (!recipe || !canAccess(recipe)) return;
+  if (plannedRecipeIds.has(recipeId)) {
+    plannedRecipeIds.delete(recipeId);
+  } else {
+    plannedRecipeIds.add(recipeId);
+  }
+  planningRecipes = true;
+  render();
+}
+
+function clearPlannedRecipes() {
+  plannedRecipeIds.clear();
+  render();
+}
+
 function deleteRecipe(recipeId) {
   const recipe = state.recipes.find((item) => item.id === recipeId);
   if (!recipe || !assertOwner(recipe)) return;
@@ -861,6 +957,36 @@ function addRecipeToList(recipeId, listId) {
   normalizeRecipeIngredients(recipe.ingredients).forEach((ingredient) => addGroceryItem(list, ingredient.name, ingredient.quantity, ingredient.tag));
   list.updatedAt = new Date().toISOString();
   activeListId = list.id;
+  saveState();
+  showView("groceries");
+  render();
+}
+
+function addPlannedRecipesToList(listId) {
+  const selectedRecipes = currentRecipes().filter((recipe) => plannedRecipeIds.has(recipe.id));
+  if (!selectedRecipes.length) return;
+
+  if (!listId) {
+    alert("Create a grocery list first.");
+    showView("groceries");
+    $("#detail-list-name").focus();
+    return;
+  }
+
+  const list = state.lists.find((item) => item.id === listId);
+  if (!list) {
+    alert("Choose an available grocery list.");
+    return;
+  }
+  if (!assertOwner(list)) return;
+
+  selectedRecipes.forEach((recipe) => {
+    normalizeRecipeIngredients(recipe.ingredients).forEach((ingredient) => addGroceryItem(list, ingredient.name, ingredient.quantity, ingredient.tag));
+  });
+  list.updatedAt = new Date().toISOString();
+  activeListId = list.id;
+  planningRecipes = false;
+  plannedRecipeIds.clear();
   saveState();
   showView("groceries");
   render();

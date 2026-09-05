@@ -199,6 +199,17 @@ select:focus {
   background: #edf3ec;
 }
 
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  flex: 0 0 44px;
+  font-size: 1.12rem;
+  line-height: 1;
+}
+
 button:disabled,
 select:disabled {
   cursor: not-allowed;
@@ -466,7 +477,21 @@ select:disabled {
 }
 
 .list-switcher {
+  display: grid;
+  grid-template-columns: auto minmax(150px, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
   width: min(420px, 100%);
+}
+
+.list-switcher .field-label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.list-switcher select {
+  min-height: 38px;
+  padding: 8px 34px 8px 10px;
 }
 
 .shopping-toolbar-actions {
@@ -498,6 +523,14 @@ select:disabled {
   gap: 10px;
   align-items: center;
   margin-bottom: 12px;
+}
+
+.list-directory-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .list-directory-heading h3,
@@ -608,6 +641,40 @@ select:disabled {
   grid-column: 1 / -1;
 }
 
+.recipe-plan-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(47, 107, 79, 0.18);
+  border-radius: 8px;
+  background: #eef6ed;
+}
+
+.recipe-plan-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.recipe-plan-summary strong,
+.recipe-plan-summary span {
+  overflow-wrap: anywhere;
+}
+
+.recipe-plan-summary span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+
+.recipe-plan-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
 .list-chip {
   width: 100%;
   min-height: 64px;
@@ -619,10 +686,42 @@ select:disabled {
   text-align: left;
 }
 
+.recipe-chip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .list-chip.active {
   border-color: var(--leaf);
   background: var(--mint);
   box-shadow: inset 4px 0 0 var(--leaf);
+}
+
+.list-chip.planned {
+  border-color: var(--leaf-dark);
+  background: #eef6ed;
+  box-shadow: inset 4px 0 0 var(--gold);
+}
+
+.recipe-select-indicator {
+  min-width: 74px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.list-chip.planned .recipe-select-indicator {
+  border-color: rgba(47, 107, 79, 0.35);
+  background: var(--leaf);
+  color: #fff;
 }
 
 .list-chip strong,
@@ -894,6 +993,15 @@ select:disabled {
 .small {
   min-height: 34px;
   padding: 0 12px;
+}
+
+.icon-button.small {
+  min-height: 38px;
+  width: 38px;
+  min-width: 38px;
+  padding: 0;
+  flex-basis: 38px;
+  font-size: 1rem;
 }
 
 .items {
@@ -1201,12 +1309,20 @@ select:disabled {
     position: static;
   }
 
+  .recipe-plan-panel {
+    position: sticky;
+    top: 58px;
+    z-index: 3;
+    box-shadow: 0 10px 28px rgba(33, 45, 39, 0.12);
+  }
+
   .shopping-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
 
   .list-switcher {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     width: 100%;
   }
 
@@ -1216,6 +1332,11 @@ select:disabled {
 
   .shopping-toolbar-actions button {
     flex: 1;
+  }
+
+  .shopping-toolbar-actions .icon-button {
+    flex: 0 0 44px;
+    width: 44px;
   }
 
   .shopping-heading {
@@ -1349,6 +1470,42 @@ select:disabled {
 
   .shopping-primary-actions .primary {
     min-width: 0;
+  }
+
+  .list-directory-heading {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .list-directory-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .list-directory-actions button {
+    width: 100%;
+  }
+
+  .recipe-chip {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 78px;
+  }
+
+  .recipe-select-indicator {
+    justify-self: start;
+    min-width: 88px;
+  }
+
+  .recipe-plan-summary,
+  .recipe-plan-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .recipe-plan-actions button {
+    width: 100%;
   }
 
   .form-actions,

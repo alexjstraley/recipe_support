@@ -169,8 +169,12 @@
             <aside class="list-directory-panel">
               <div class="list-directory-heading">
                 <h3>Your recipes</h3>
-                <button id="new-recipe" class="ghost small" type="button">New recipe</button>
+                <div class="list-directory-actions">
+                  <button id="plan-recipes" class="ghost small" type="button" aria-pressed="false">Plan week</button>
+                  <button id="new-recipe" class="ghost small" type="button">New recipe</button>
+                </div>
               </div>
+              <div id="recipe-plan-panel" class="recipe-plan-panel hidden" aria-live="polite"></div>
               <div id="recipes-list" class="list-directory"></div>
             </aside>
 
@@ -266,13 +270,15 @@
         <section id="groceries-view" class="view active-view">
           <section class="shopping-screen">
             <div class="shopping-toolbar">
-              <label class="list-switcher">
-                List
+              <div class="list-switcher">
+                <span class="field-label">List</span>
                 <select id="list-switcher" aria-label="Choose grocery list"></select>
-              </label>
-              <div class="shopping-toolbar-actions">
-                <button id="edit-list" class="ghost small" type="button">List settings</button>
-                <button id="new-list" class="ghost small" type="button">New list</button>
+                <button id="edit-list" class="ghost small icon-button" type="button" aria-label="List settings" title="List settings">
+                  <span aria-hidden="true">&#9881;</span>
+                </button>
+                <button id="new-list" class="ghost small icon-button" type="button" aria-label="New list" title="New list">
+                  <span aria-hidden="true">+</span>
+                </button>
               </div>
             </div>
 
