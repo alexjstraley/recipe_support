@@ -1,5 +1,13 @@
 const STORAGE_KEY = "recipe-support-state-v1";
-const SESSION_KEY = "recipe-support-session-v1";
+const cloud = window.supabase.createClient(window.RECIPE_SUPABASE.url, window.RECIPE_SUPABASE.publishableKey, { global: { fetch: RecipeNetwork.timedFetch } });
+let sessionUser = null;
+let savedState = null;
+let busy = false;
+let saveScheduled = false;
+let authGeneration = 0;
+let failedDraft = null;
+let saveInFlight = false;
+let recipeDirty = false;
 
 const COMMON_ITEMS = [
   { name: "Apples", tag: "green" },
@@ -86,8 +94,8 @@ const TAG_LABELS = {
   pink: "Home"
 };
 
-let state = ensureState(loadState());
-let sessionEmail = localStorage.getItem(SESSION_KEY);
+let state = ensureState(structuredClone(defaultState));
+let sessionEmail = null;
 let authMode = "signin";
 let editingRecipeId = null;
 let creatingRecipe = false;
@@ -116,7 +124,8 @@ const standardItemForm = $("#standard-item-form");
 
 function loadState() {
   try {
-    return { ...defaultState, ...JSON.parse(localStorage.getItem(STORAGE_KEY)) };
+    const legacy = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    return { ...structuredClone(defaultState), recipes: Array.isArray(legacy?.recipes) ? legacy.recipes : [], lists: Array.isArray(legacy?.lists) ? legacy.lists : [] };
   } catch {
     return structuredClone(defaultState);
   }
@@ -129,7 +138,7 @@ function ensureState(nextState) {
   const commonItemsByName = Object.fromEntries(existingCommonItems.map((item) => [normalizeItemName(item.name), item]));
   COMMON_ITEMS.forEach((item) => {
     const normalizedName = normalizeItemName(item.name);
-    if (!commonItemsByName[normalizedName] && !removedNames.has(normalizedName)) {
+    if (!Object.hasOwn(commonItemsByName, normalizedName) && !removedNames.has(normalizedName)) {
       commonItemsByName[normalizedName] = { ...item, tag: normalizeTag(item.tag) };
     }
   });
@@ -160,7 +169,81 @@ function ensureState(nextState) {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // Coalesce nested synchronous edits (learning tags and adding an item) into one save.
+  if (saveScheduled) return;
+  if (saveInFlight) {
+    setStatus("A save is already in progress. Wait before making another change.", true);
+    return;
+  }
+  saveScheduled = true;
+  setBusy(true, "Saving…");
+  const generation = authGeneration;
+  queueMicrotask(async () => {
+    saveScheduled = false;
+    if (generation !== authGeneration) return;
+    saveInFlight = true;
+    const draft = structuredClone(state);
+    if (!failedDraft) rememberRecoveryDraft(draft);
+    try {
+      if (!sessionUser || !savedState) throw new Error("Sign in before saving.");
+      const changes = CloudStore.changes(savedState, draft, sessionUser);
+      if (changes.length) {
+        const { data, error } = await cloud.rpc("save_workspace", { changes });
+        if (error) throw error;
+        if (generation !== authGeneration) return;
+        state = ensureState(CloudStore.decode(data, sessionUser, defaultState));
+        savedState = structuredClone(state);
+      }
+      if (!failedDraft) forgetRecoveryDraft();
+      updateRecoveryActions();
+      setStatus("Saved to Supabase");
+      renderCommonItemOptions();
+      if (changes.some(change => change.kind !== "preferences")) render();
+    } catch (error) {
+      if (generation !== authGeneration) return;
+      failedDraft = draft;
+      rememberRecoveryDraft(draft);
+      updateRecoveryActions();
+      state = structuredClone(savedState || defaultState);
+      render();
+      setStatus("Save failed: " + error.message + " Your unsaved changes can be downloaded. Refresh before trying again.", true);
+    } finally {
+      if (generation === authGeneration) { saveInFlight = false; setBusy(false); }
+    }
+  });
+}
+
+function setStatus(message, error = false) {
+  $("#sync-status").textContent = message;
+  $("#sync-status").classList.toggle("sync-error", error);
+}
+function setBusy(value, message) {
+  busy = value;
+  appScreen.inert = value;
+  document.querySelectorAll("dialog").forEach(dialog => { dialog.inert = value; });
+  if (message) setStatus(message);
+}
+function downloadJSON(value, filename) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url; link.download = filename; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function refreshWorkspace() {
+  if (!sessionUser || busy) return;
+  if (recipeDirty) { setStatus("Save your recipe draft or start a new recipe before refreshing.", true); return; }
+  const generation = authGeneration;
+  setBusy(true, "Loading from Supabase…");
+  try {
+    const { data, error } = await cloud.rpc("load_workspace");
+    if (error) throw error;
+    if (generation !== authGeneration) return;
+    state = ensureState(CloudStore.decode(data, sessionUser, defaultState));
+    savedState = structuredClone(state);
+    renderCommonItemOptions(); render();
+    setStatus("Up to date");
+  } catch (error) { if (generation === authGeneration) setStatus("Could not refresh: " + error.message, true); }
+  finally { if (generation === authGeneration) setBusy(false); }
 }
 
 function normalizeEmail(email) {
@@ -174,27 +257,16 @@ function parseEmails(value) {
     .filter(Boolean);
 }
 
-function id(prefix) {
-  return `${prefix}-${crypto.randomUUID()}`;
-}
-
-async function hashPassword(password, salt) {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: encoder.encode(salt), iterations: 150000, hash: "SHA-256" },
-    key,
-    256
-  );
-  return btoa(String.fromCharCode(...new Uint8Array(bits)));
+function id() {
+  return crypto.randomUUID();
 }
 
 function canAccess(record) {
-  return record.owner === sessionEmail || record.sharedWith.includes(sessionEmail);
+  return Boolean(sessionUser); // The loaded workspace has already passed database RLS.
 }
 
 function owned(record) {
-  return record.owner === sessionEmail;
+  return record.ownerId === sessionUser?.id;
 }
 
 function currentRecipes() {
@@ -215,33 +287,18 @@ function assertOwner(record) {
 
 authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const email = normalizeEmail($("#auth-email").value);
-  const password = $("#auth-password").value;
+  authSubmit.disabled = true;
   authMessage.textContent = "";
-
-  if (authMode === "signup") {
-    if (state.users[email]) {
-      authMessage.textContent = "An account already exists for this email.";
-      return;
-    }
-    const salt = crypto.randomUUID();
-    state.users[email] = {
-      email,
-      salt,
-      passwordHash: await hashPassword(password, salt),
-      createdAt: new Date().toISOString()
-    };
-    saveState();
-    startSession(email);
-    return;
-  }
-
-  const user = state.users[email];
-  if (!user || user.passwordHash !== (await hashPassword(password, user.salt))) {
-    authMessage.textContent = "Email or password was not recognized.";
-    return;
-  }
-  startSession(email);
+  try {
+    const credentials = { email: normalizeEmail($("#auth-email").value), password: $("#auth-password").value };
+    const { data, error } = authMode === "signup"
+      ? await cloud.auth.signUp({ ...credentials, options: { emailRedirectTo: location.origin + location.pathname } })
+      : await cloud.auth.signInWithPassword(credentials);
+    if (error) throw error;
+    $("#auth-password").value = "";
+    if (!data.session) authMessage.textContent = "Check your email to confirm your account, then sign in.";
+  } catch (error) { authMessage.textContent = error.message; }
+  finally { authSubmit.disabled = false; }
 });
 
 document.querySelectorAll("[data-auth-mode]").forEach((button) => {
@@ -280,18 +337,18 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeProfile();
 });
 
-$("#sign-out").addEventListener("click", () => {
-  localStorage.removeItem(SESSION_KEY);
-  sessionEmail = null;
-  showAuth();
+$("#sign-out").addEventListener("click", async () => {
+  if (busy) return;
+  const { error } = await cloud.auth.signOut({ scope: "local" });
+  if (error) setStatus(error.message, true);
 });
 
 $("#export-data").addEventListener("click", () => {
   const exportable = {
-    exportedAt: new Date().toISOString(),
-    email: sessionEmail,
-    recipes: currentRecipes(),
-    lists: currentLists()
+    exportedAt: new Date().toISOString(), email: sessionEmail,
+    recipes: currentRecipes(), lists: currentLists(),
+    itemTags: state.itemTags[sessionEmail] || {},
+    commonItems: state.commonItems, removedCommonItems: state.removedCommonItems
   };
   const blob = new Blob([JSON.stringify(exportable, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
@@ -303,52 +360,25 @@ $("#export-data").addEventListener("click", () => {
 
 accountForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const currentUser = state.users[sessionEmail];
-  const nextEmail = normalizeEmail($("#account-email").value);
-  const currentPassword = $("#account-current-password").value;
-  const nextPassword = $("#account-new-password").value;
   const message = $("#account-message");
-  message.classList.remove("success");
-  message.textContent = "";
-
-  if (!currentUser || currentUser.passwordHash !== (await hashPassword(currentPassword, currentUser.salt))) {
-    message.textContent = "Current password was not recognized.";
-    return;
-  }
-
-  if (nextEmail !== sessionEmail && state.users[nextEmail]) {
-    message.textContent = "An account already exists for that email.";
-    return;
-  }
-
-  const previousEmail = sessionEmail;
-  const updatedUser = { ...currentUser, email: nextEmail };
-  if (nextPassword) {
-    updatedUser.salt = crypto.randomUUID();
-    updatedUser.passwordHash = await hashPassword(nextPassword, updatedUser.salt);
-  }
-
-  if (nextEmail !== previousEmail) {
-    delete state.users[previousEmail];
-    state.recipes.forEach((recipe) => migrateRecordEmail(recipe, previousEmail, nextEmail));
-    state.lists.forEach((list) => migrateRecordEmail(list, previousEmail, nextEmail));
-    if (state.itemTags[previousEmail]) {
-      state.itemTags[nextEmail] = { ...state.itemTags[nextEmail], ...state.itemTags[previousEmail] };
-      delete state.itemTags[previousEmail];
-    }
-  }
-
-  state.users[nextEmail] = updatedUser;
-  sessionEmail = nextEmail;
-  localStorage.setItem(SESSION_KEY, nextEmail);
-  saveState();
-  renderProfile();
-  render();
-  $("#workspace-title").textContent = `${sessionEmail.split("@")[0]}'s Grocery Lists`;
-  $("#account-current-password").value = "";
-  $("#account-new-password").value = "";
-  message.classList.add("success");
-  message.textContent = "Account updated.";
+  const button = accountForm.querySelector("button[type=submit]");
+  button.disabled = true;
+  try {
+    const nextEmail = normalizeEmail($("#account-email").value);
+    const nextPassword = $("#account-new-password").value;
+    const { error: verifyError } = await cloud.auth.signInWithPassword({ email: sessionEmail, password: $("#account-current-password").value });
+    if (verifyError) throw verifyError;
+    const updates = {};
+    if (nextEmail !== sessionEmail) updates.email = nextEmail;
+    if (nextPassword) updates.password = nextPassword;
+    if (!Object.keys(updates).length) { message.textContent = "No account changes entered."; return; }
+    const { error } = await cloud.auth.updateUser(updates, { emailRedirectTo: location.origin + location.pathname });
+    if (error) throw error;
+    $("#account-current-password").value = "";
+    $("#account-new-password").value = "";
+    message.textContent = updates.email ? "Check your email to confirm the address change." : "Password updated.";
+  } catch (error) { message.textContent = error.message; }
+  finally { button.disabled = false; }
 });
 
 standardItemForm.addEventListener("submit", (event) => {
@@ -396,12 +426,13 @@ recipeForm.addEventListener("submit", (event) => {
     if (!recipe || !assertOwner(recipe)) return;
     Object.assign(recipe, payload);
   } else {
-    const recipe = { id: id("recipe"), owner: sessionEmail, createdAt: now, ...payload };
+    const recipe = { id: id("recipe"), owner: sessionEmail, ownerId: sessionUser.id, createdAt: now, ...payload };
     state.recipes.push(recipe);
     editingRecipeId = recipe.id;
   }
 
   creatingRecipe = false;
+  recipeDirty = false;
   saveState();
   render();
 });
@@ -485,7 +516,7 @@ listDetailsForm.addEventListener("submit", (event) => {
   } else {
     list = {
       id: id("list"),
-      owner: sessionEmail,
+      owner: sessionEmail, ownerId: sessionUser.id,
       createdAt: now,
       items: [],
       ...payload
@@ -529,10 +560,49 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest(".typeahead-field")) hideItemSuggestions();
 });
 
-function startSession(email) {
-  sessionEmail = email;
-  localStorage.setItem(SESSION_KEY, email);
-  showApp();
+async function handleSession(session) {
+  const user = session?.user || null;
+  if (user && sessionUser?.id === user.id && sessionUser?.email === user.email && savedState) return;
+  const previousUserId = sessionUser?.id;
+  const generation = ++authGeneration;
+  if (previousUserId && previousUserId !== user?.id) {
+    try { sessionStorage.removeItem("recipe-support-draft:" + previousUserId); } catch {}
+  }
+  sessionUser = user;
+  sessionEmail = user?.email || null;
+  state = ensureState(structuredClone(defaultState));
+  savedState = null; failedDraft = null; saveInFlight = false; recipeDirty = false;
+  updateRecoveryActions();
+  document.querySelectorAll("input[type=password]").forEach(input => { input.value = ""; });
+  document.querySelectorAll("#app-screen form").forEach(form => form.reset());
+  $("#signed-in-email").textContent = "";
+  $("#workspace-title").textContent = "My Kitchen";
+  for (const selector of ["#recipes-list","#active-list-items","#lists-list","#sharing-list","#recipe-ingredients-list","#recipe-grocery-actions","#recipe-plan-panel","#list-switcher"]) $(selector).replaceChildren();
+  renderCommonItemOptions();
+  renderStandardItems();
+  editingRecipeId = null; activeListId = null; draftRecipeIngredients = [];
+  plannedRecipeIds.clear();
+  document.querySelectorAll("dialog[open]").forEach(dialog => dialog.close());
+  if (!user) { setBusy(false); showAuth(); setStatus(""); return; }
+  showAuth();
+  authMessage.textContent = "Loading your workspace…";
+  setBusy(true);
+  try {
+    const { data, error } = await cloud.rpc("load_workspace");
+    if (error) throw error;
+    if (generation !== authGeneration) return;
+    state = ensureState(CloudStore.decode(data, user, defaultState));
+    savedState = structuredClone(state);
+    renderCommonItemOptions();
+    showApp();
+    restoreRecoveryDraft();
+    setStatus(failedDraft ? "An earlier save may be incomplete. Download its backup and refresh before editing." : "Connected to Supabase");
+    const legacy = loadState();
+    const hasLegacy = [...legacy.recipes, ...legacy.lists].some(r => r.owner?.toLowerCase() === sessionEmail.toLowerCase());
+    $("#import-local").classList.toggle("hidden", !hasLegacy);
+  } catch (error) {
+    if (generation === authGeneration) authMessage.textContent = "Could not load your workspace: " + error.message + " Sign in again to retry.";
+  } finally { if (generation === authGeneration) setBusy(false); }
 }
 
 function showAuth() {
@@ -590,10 +660,6 @@ function renderProfile() {
   renderStandardItems();
 }
 
-function migrateRecordEmail(record, previousEmail, nextEmail) {
-  if (record.owner === previousEmail) record.owner = nextEmail;
-  record.sharedWith = [...new Set(record.sharedWith.map((email) => email === previousEmail ? nextEmail : email))];
-}
 
 function renderRecipes(recipes, lists) {
   const container = $("#recipes-list");
@@ -671,6 +737,11 @@ function renderActiveRecipe(recipe, lists) {
     field.disabled = !canEdit;
   });
 
+  const pendingDraft = recipeDirty ? {
+    title: $("#recipe-name").value, servings: $("#recipe-servings").value,
+    shared: $("#recipe-shared").value, instructions: $("#recipe-instructions").value,
+    ingredients: structuredClone(draftRecipeIngredients)
+  } : null;
   if (recipe) {
     draftRecipeIngredients = normalizeRecipeIngredients(recipe.ingredients);
     $("#recipe-name").value = recipe.title;
@@ -679,6 +750,11 @@ function renderActiveRecipe(recipe, lists) {
     $("#recipe-instructions").value = recipe.instructions;
   } else {
     clearRecipeFields();
+  }
+  if (pendingDraft && canEdit) {
+    $("#recipe-name").value = pendingDraft.title; $("#recipe-servings").value = pendingDraft.servings;
+    $("#recipe-shared").value = pendingDraft.shared; $("#recipe-instructions").value = pendingDraft.instructions;
+    draftRecipeIngredients = pendingDraft.ingredients;
   }
   renderRecipeIngredients(canEdit);
 
@@ -723,10 +799,10 @@ function renderRecipeIngredients(canEdit = true) {
             <span>${escapeHtml(ingredient.name)}</span>
           </span>
           <span class="item-actions">
-            <select class="tag-select" data-recipe-tag="${ingredient.id}" aria-label="Tag ${escapeHtml(ingredient.name)}" ${canEdit ? "" : "disabled"}>
+            <select class="tag-select" data-recipe-tag="${escapeHtml(ingredient.id)}" aria-label="Tag ${escapeHtml(ingredient.name)}" ${canEdit ? "" : "disabled"}>
               ${tagOptions(ingredient.tag)}
             </select>
-            <button class="danger small" data-remove-recipe-ingredient="${ingredient.id}" type="button" ${canEdit ? "" : "disabled"}>Remove</button>
+            <button class="danger small" data-remove-recipe-ingredient="${escapeHtml(ingredient.id)}" type="button" ${canEdit ? "" : "disabled"}>Remove</button>
           </span>
         </li>
       `).join("")}
@@ -748,6 +824,7 @@ function renderLists(lists) {
   switcher.disabled = !lists.length;
 
   if (!lists.length) {
+    for (const selector of ["#open-add-item","#toggle-manage-items","#clear-checked","#edit-list"]) $(selector).disabled = true;
     $("#active-list-title").textContent = "Start a grocery list";
     $("#active-list-progress").textContent = "Create a list to start shopping.";
     $("#detail-list-name").value = "";
@@ -792,6 +869,7 @@ function renderActiveList(list) {
   $("#detail-list-shared").value = list.sharedWith.join(", ");
   const remaining = list.items.filter((item) => !item.done).length;
   const completed = list.items.length - remaining;
+  for (const selector of ["#open-add-item","#toggle-manage-items","#clear-checked","#edit-list"]) $(selector).disabled = !owned(list);
   $("#active-list-progress").textContent = list.items.length
     ? `${remaining} remaining, ${completed} checked off`
     : "No items yet.";
@@ -799,7 +877,8 @@ function renderActiveList(list) {
   $("#toggle-manage-items").textContent = manageItems ? "Done" : "Manage";
 
   const detail = document.createElement("article");
-  detail.className = `active-list-card shopping-list-card ${manageItems ? "manage-mode" : ""}`;
+  const canManage = manageItems && owned(list);
+  detail.className = `active-list-card shopping-list-card ${canManage ? "manage-mode" : ""}`;
   detail.innerHTML = `
     <div class="pill-row shopping-meta">
       <span class="pill">${owned(list) ? "Owner" : "Shared"}</span>
@@ -808,7 +887,7 @@ function renderActiveList(list) {
     <ul class="items shopping-items">
       ${sortedItems(list).map((item) => `
         <li class="item-row ${item.done ? "done" : ""} ${item.tag ? `tag-${escapeHtml(item.tag)}` : ""}">
-          <button class="item-tap-target" data-shopping-item="${list.id}:${item.id}" type="button" aria-pressed="${item.done}">
+          <button class="item-tap-target" data-shopping-item="${escapeHtml(list.id)}:${escapeHtml(item.id)}" type="button" aria-pressed="${item.done}" ${owned(list) ? "" : "disabled"}>
             <span class="item-main">
               <span class="item-name">${escapeHtml(item.name)}</span>
               <span class="item-subline">
@@ -817,17 +896,17 @@ function renderActiveList(list) {
               </span>
             </span>
           </button>
-          ${manageItems ? `<span class="item-actions">
-            <select class="tag-select" data-tag-item="${list.id}:${item.id}" aria-label="Tag ${escapeHtml(item.name)}">
+          ${canManage ? `<span class="item-actions">
+            <select class="tag-select" data-tag-item="${escapeHtml(list.id)}:${escapeHtml(item.id)}" aria-label="Tag ${escapeHtml(item.name)}">
               ${tagOptions(item.tag)}
             </select>
-            <button class="danger small" data-remove-item="${list.id}:${item.id}" type="button">Remove</button>
+            <button class="danger small" data-remove-item="${escapeHtml(list.id)}:${escapeHtml(item.id)}" type="button">Remove</button>
           </span>` : ""}
         </li>
       `).join("") || `<li class="empty-inline">Tap Add item when you are ready.</li>`}
     </ul>
-    ${manageItems ? `<div class="card-actions">
-      <button class="danger small" data-delete-list="${list.id}" type="button">Delete list</button>
+    ${canManage ? `<div class="card-actions">
+      <button class="danger small" data-delete-list="${escapeHtml(list.id)}" type="button">Delete list</button>
     </div>` : ""}
   `;
   container.append(detail);
@@ -859,6 +938,7 @@ function renderSharing(recipes, lists) {
 }
 
 function openRecipe(recipeId) {
+  if (recipeId !== editingRecipeId && !discardRecipeDraft()) return;
   const recipe = state.recipes.find((item) => item.id === recipeId);
   if (!recipe || !canAccess(recipe)) return;
   editingRecipeId = recipeId;
@@ -927,6 +1007,8 @@ function clearPlannedRecipes() {
 }
 
 function deleteRecipe(recipeId) {
+  if (!confirm("Delete this recipe and its sharing settings?")) return;
+  recipeDirty = false;
   const recipe = state.recipes.find((item) => item.id === recipeId);
   if (!recipe || !assertOwner(recipe)) return;
   state.recipes = state.recipes.filter((item) => item.id !== recipeId);
@@ -1014,6 +1096,7 @@ function openList(listId) {
 }
 
 function deleteList(listId) {
+  if (!confirm("Delete this grocery list and all its items?")) return;
   const list = state.lists.find((item) => item.id === listId);
   if (!list || !assertOwner(list)) return;
   state.lists = state.lists.filter((item) => item.id !== listId);
@@ -1178,6 +1261,7 @@ function renderListSelection() {
 }
 
 function startNewRecipe() {
+  if (!discardRecipeDraft()) return;
   editingRecipeId = null;
   creatingRecipe = true;
   renderRecipeSelection();
@@ -1199,13 +1283,15 @@ async function importRecipeFromUrl(event) {
   }
 
   message.classList.remove("success");
+  if (!discardRecipeDraft()) return;
+  const generation = authGeneration;
+  $("#import-recipe").disabled = true;
   message.textContent = "Importing recipe...";
 
   try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`The page returned ${response.status}.`);
-    const html = await response.text();
-    const parsedRecipe = parseRecipePage(html, url);
+    const result = await RecipeNetwork.recipeHTML(url);
+    if (generation !== authGeneration) return;
+    const parsedRecipe = parseRecipePage(result.html, result.url);
 
     if (!parsedRecipe.ingredients.length && !parsedRecipe.instructions) {
       throw new Error("I could not find recipe ingredients or instructions on that page.");
@@ -1215,8 +1301,8 @@ async function importRecipeFromUrl(event) {
     message.classList.add("success");
     message.textContent = `Imported ${parsedRecipe.title || "recipe"}. Review it, then save.`;
   } catch (error) {
-    message.textContent = `Could not import this page. Some sites block browser-side crawling; a backend crawler would be needed. ${error.message}`;
-  }
+    if (generation === authGeneration) message.textContent = "Could not import this page. Paste the recipe text below instead. " + error.message;
+  } finally { $("#import-recipe").disabled = false; }
 }
 
 function importRecipeFromText(event) {
@@ -1228,6 +1314,8 @@ function importRecipeFromText(event) {
     return;
   }
 
+  if (text.length > 50000) { message.textContent = "Paste up to 50,000 characters."; return; }
+  if (!discardRecipeDraft()) return;
   message.classList.remove("success");
   const parsedRecipe = parseRecipeText(text);
   if (!parsedRecipe.ingredients.length && !parsedRecipe.instructions) {
@@ -1398,6 +1486,7 @@ function fallbackRecipeFromDocument(document, url) {
 }
 
 function applyImportedRecipe(recipe) {
+  recipeDirty = true;
   editingRecipeId = null;
   creatingRecipe = true;
   renderRecipeSelection();
@@ -1434,6 +1523,7 @@ function addDraftRecipeIngredient() {
     return;
   }
 
+  recipeDirty = true;
   draftRecipeIngredients.push({
     id: id("ingredient"),
     name,
@@ -1447,11 +1537,13 @@ function addDraftRecipeIngredient() {
 }
 
 function removeDraftRecipeIngredient(ingredientId) {
+  recipeDirty = true;
   draftRecipeIngredients = draftRecipeIngredients.filter((ingredient) => ingredient.id !== ingredientId);
   renderRecipeIngredients(true);
 }
 
 function tagDraftRecipeIngredient(ingredientId, tag) {
+  recipeDirty = true;
   const ingredient = draftRecipeIngredients.find((item) => item.id === ingredientId);
   if (!ingredient) return;
   ingredient.tag = normalizeTag(tag);
@@ -1831,11 +1923,104 @@ function escapeHtml(value) {
   })[char]);
 }
 
-renderCommonItemOptions();
-saveState();
+$("#refresh-data").addEventListener("click", refreshWorkspace);
+$("#download-unsaved").addEventListener("click", () => {
+  if (failedDraft) downloadJSON({ email: sessionEmail, recipes: failedDraft.recipes, lists: failedDraft.lists, itemTags: failedDraft.itemTags, commonItems: failedDraft.commonItems }, "recipe-support-unsaved.json");
+});
+$("#import-local").addEventListener("click", async () => {
+  if (busy) return;
+  if (!sessionUser.email_confirmed_at) { setStatus("Confirm your email before importing local records.", true); return; }
+  const legacy = loadState();
+  const generation = authGeneration;
+  const user = sessionUser;
+  setBusy(true, "Preparing local import…");
+  try {
+    const imported = await CloudStore.legacyRecords(legacy, user);
+    if (generation !== authGeneration) return;
+    let count = 0;
+    for (const key of ["recipes","lists"]) {
+      const existing = new Set(state[key].map(r => r.id));
+      for (const row of imported[key]) if (!existing.has(row.id)) { state[key].push(row); count++; }
+    }
+    if (!count) { setStatus("These local records have already been imported."); return; }
+    saveState();
+  } catch (error) { if (generation === authGeneration) setStatus("Import failed: " + error.message, true); }
+  finally { if (generation === authGeneration && !saveScheduled && !saveInFlight) setBusy(false); }
+});
+window.addEventListener("beforeunload", event => {
+  if (busy || failedDraft || recipeDirty) { event.preventDefault(); event.returnValue = ""; }
+});
+cloud.auth.onAuthStateChange((event, session) => {
+  // Never await Supabase calls inside its auth lock.
+  if (event === "TOKEN_REFRESHED") return;
+  setTimeout(() => { handleSession(session).then(() => {
+    if (event === "PASSWORD_RECOVERY") $("#password-reset-dialog").showModal();
+  }).catch(error => { authMessage.textContent = error.message; }); }, 0);
+});
+$("#forgot-password").addEventListener("click", async () => {
+  const email = normalizeEmail($("#auth-email").value);
+  if (!email) { authMessage.textContent = "Enter your email first."; return; }
+  const button = $("#forgot-password"); button.disabled = true;
+  try {
+    const { error } = await cloud.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    if (error) throw error;
+    authMessage.textContent = "If an account exists, check its email for a reset link.";
+  } catch (error) { authMessage.textContent = error.message; }
+  finally { button.disabled = false; }
+});
+$("#password-reset-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const button = event.target.querySelector("button");
+  button.disabled = true;
+  try {
+    const { error } = await cloud.auth.updateUser({ password: $("#reset-password").value });
+    if (error) throw error;
+    $("#reset-password").value = "";
+    $("#password-reset-dialog").close();
+    setStatus("Password updated");
+  } catch (error) { $("#reset-message").textContent = error.message; }
+  finally { button.disabled = false; }
+});
+showAuth();
+authMessage.textContent = "Connecting to Supabase…";
+cloud.auth.getSession().then(({ data, error }) => {
+  if (error) authMessage.textContent = error.message;
+  else if (!data.session) authMessage.textContent = "";
+}).catch(error => { authMessage.textContent = error.message; });
 
-if (sessionEmail && state.users[sessionEmail]) {
-  showApp();
-} else {
-  showAuth();
+
+function updateRecoveryActions() {
+  $("#download-unsaved").classList.toggle("hidden", !failedDraft);
+  $("#discard-unsaved").classList.toggle("hidden", !failedDraft);
 }
+function rememberRecoveryDraft(draft) {
+  if (!sessionUser) return;
+  const recovery = { ...draft, users: {}, recipes: draft.recipes.filter(owned), lists: draft.lists.filter(owned) };
+  try { sessionStorage.setItem("recipe-support-draft:" + sessionUser.id, JSON.stringify({ at: Date.now(), draft: recovery })); }
+  catch { setStatus("This browser cannot keep a recovery backup. Download unsaved changes before closing if a save fails.", true); }
+}
+function restoreRecoveryDraft() {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem("recipe-support-draft:" + sessionUser.id));
+    if (raw && Date.now() - raw.at < 86400000) failedDraft = raw.draft;
+    else forgetRecoveryDraft();
+  } catch { forgetRecoveryDraft(); }
+  updateRecoveryActions();
+}
+function forgetRecoveryDraft() {
+  if (sessionUser) { try { sessionStorage.removeItem("recipe-support-draft:" + sessionUser.id); } catch {} }
+}
+$("#discard-unsaved").addEventListener("click", () => {
+  if (!confirm("Discard the recovery backup? Download it first if you still need those changes.")) return;
+  failedDraft = null; forgetRecoveryDraft(); updateRecoveryActions();
+});
+function discardRecipeDraft() {
+  if (recipeDirty && !confirm("Discard unsaved recipe edits?")) return false;
+  recipeDirty = false; return true;
+}
+recipeForm.addEventListener("input", () => { recipeDirty = true; });
+recipeForm.addEventListener("change", () => { recipeDirty = true; });
+window.addEventListener("offline", () => { setStatus("Offline. Changes cannot be saved until you reconnect.", true); });
+window.addEventListener("online", () => { setStatus("Connection restored. Refresh cloud data before retrying a failed save."); });
+window.addEventListener("pageshow", event => { if (event.persisted) location.reload(); });
+window.recipeAppReady = true;

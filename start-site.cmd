@@ -9,7 +9,7 @@ if exist "%BUNDLED_NODE%" (
   if errorlevel 1 (
     echo Could not find Node.js.
     echo.
-    echo Open index.html directly, or install Node.js from https://nodejs.org/
+    echo Install Node.js from https://nodejs.org/ and run this launcher again.
     echo.
     pause
     exit /b 1

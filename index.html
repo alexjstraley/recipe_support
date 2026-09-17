@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <div class="sync-bar" role="status" aria-live="polite"><span id="sync-status"></span><button id="download-unsaved" class="ghost small hidden" type="button">Download unsaved changes</button><button id="discard-unsaved" class="ghost small hidden" type="button">Discard backup</button></div>
     <main id="auth-screen" class="auth-screen">
       <section class="auth-panel">
         <div>
@@ -23,14 +24,16 @@
 
           <label>
             Email
-            <input id="auth-email" type="email" autocomplete="email" required placeholder="you@example.com" />
+            <input id="auth-email" maxlength="254" type="email" autocomplete="email" required placeholder="you@example.com" />
           </label>
           <label>
             Password
             <input id="auth-password" type="password" autocomplete="current-password" required minlength="8" placeholder="8+ characters" />
           </label>
           <button class="primary" type="submit" id="auth-submit">Sign in securely</button>
+          <button class="ghost" type="button" id="forgot-password">Forgot password?</button>
           <p id="auth-message" class="form-message" role="status"></p>
+          <p class="form-message">Use a Supabase account. If you used the local prototype, create an account with the same email, confirm it, and use “Import local recipes and lists” in your profile.</p>
         </form>
       </section>
     </main>
@@ -62,7 +65,7 @@
         <form id="account-form" class="account-form">
           <label>
             Email
-            <input id="account-email" type="email" autocomplete="email" required />
+            <input id="account-email" maxlength="254" type="email" autocomplete="email" required />
           </label>
           <label>
             Current password
@@ -87,7 +90,7 @@
             <form id="standard-item-form" class="standard-item-form">
               <label>
                 Item
-                <input id="standard-item-name" list="common-item-options" placeholder="Chickpeas" />
+                <input id="standard-item-name" maxlength="200" list="common-item-options" placeholder="Chickpeas" />
               </label>
               <label>
                 Tag
@@ -128,24 +131,26 @@
           <div class="security-grid">
             <article>
               <h3>Authentication</h3>
-              <p>Use managed auth with verified emails, MFA support, session rotation, and short-lived access tokens.</p>
+              <p>Supabase manages sign-in, email confirmation, password recovery, and session refresh.</p>
             </article>
             <article>
               <h3>Authorization</h3>
-              <p>Enforce owner, viewer, and editor permissions on every server request. Never trust client-side filtering.</p>
+              <p>Database rules allow owners to edit and invited members to view recipes and lists.</p>
             </article>
             <article>
               <h3>Data protection</h3>
-              <p>Store data in a private database with row-level ownership checks, encrypted backups, and audit logs.</p>
+              <p>Recipes and lists are saved in Supabase with Row Level Security. Each save is applied as one transaction.</p>
             </article>
             <article>
               <h3>Sharing</h3>
-              <p>Invite by email, require account verification, and let owners revoke access instantly.</p>
+              <p>Add a member’s confirmed email to grant read access. Removing it blocks future reads. Members can refresh to see new shares.</p>
             </article>
           </div>
         </details>
 
         <div class="profile-actions">
+          <button id="refresh-data" class="ghost" type="button">Refresh cloud data</button>
+          <button id="import-local" class="ghost hidden" type="button">Import local recipes and lists</button>
           <button id="export-data" class="ghost" type="button">Export data</button>
           <button id="sign-out" class="danger" type="button">Sign out</button>
         </div>
@@ -189,7 +194,7 @@
               <form id="recipe-import-form" class="recipe-import-form">
                 <label>
                   Import from webpage
-                  <input id="recipe-import-url" type="url" placeholder="https://example.com/recipe" />
+                  <input id="recipe-import-url" maxlength="2048" type="url" placeholder="https://example.com/recipe" />
                 </label>
                 <button id="import-recipe" class="ghost" type="submit">Import</button>
                 <p id="recipe-import-message" class="form-message" role="status"></p>
@@ -198,7 +203,7 @@
               <form id="recipe-text-import-form" class="recipe-text-import-form">
                 <label>
                   Easy add from pasted text
-                  <textarea id="recipe-import-text" placeholder="Paste recipe text here, including ingredients and instructions."></textarea>
+                  <textarea id="recipe-import-text" maxlength="50000" placeholder="Paste recipe text here, including ingredients and instructions."></textarea>
                 </label>
                 <div class="form-actions">
                   <button id="import-recipe-text" class="ghost" type="submit">Parse text</button>
@@ -210,26 +215,26 @@
               <form id="recipe-form" class="recipe-details-form">
                 <label>
                   Recipe name
-                  <input id="recipe-name" required placeholder="Lemon herb lentils" />
+                  <input id="recipe-name" maxlength="200" required placeholder="Lemon herb lentils" />
                 </label>
                 <label>
                   Servings
-                  <input id="recipe-servings" type="number" min="1" value="4" required />
+                  <input id="recipe-servings" type="number" max="1000" min="1" value="4" required />
                 </label>
                 <label class="wide">
                   Shared with
-                  <input id="recipe-shared" type="email" multiple placeholder="friend@example.com, family@example.com" />
+                  <input id="recipe-shared" maxlength="5100" type="email" multiple placeholder="friend@example.com, family@example.com" />
                 </label>
                 <div class="wide">
                   <p class="field-label">Ingredients</p>
                   <div class="quick-add-form recipe-ingredient-form">
                     <label>
                       Item
-                      <input id="recipe-ingredient-item" list="common-item-options" placeholder="Red lentils" />
+                      <input id="recipe-ingredient-item" maxlength="200" list="common-item-options" placeholder="Red lentils" />
                     </label>
                     <label>
                       Quantity
-                      <input id="recipe-ingredient-quantity" placeholder="1 cup" />
+                      <input id="recipe-ingredient-quantity" maxlength="120" placeholder="1 cup" />
                     </label>
                     <label>
                       Tag
@@ -253,7 +258,7 @@
                 </div>
                 <label class="wide">
                   Instructions
-                  <textarea id="recipe-instructions" required placeholder="Simmer, season, garnish, and serve."></textarea>
+                  <textarea id="recipe-instructions" maxlength="20000" required placeholder="Simmer, season, garnish, and serve."></textarea>
                 </label>
                 <div class="form-actions wide">
                   <button id="save-recipe" class="primary" type="submit">Save recipe</button>
@@ -313,13 +318,13 @@
               <label>
                 Item
                 <span class="typeahead-field">
-                  <input id="list-item" autocomplete="off" placeholder="Broccoli" />
+                  <input id="list-item" maxlength="200" autocomplete="off" placeholder="Broccoli" />
                   <span id="item-suggestions" class="typeahead-results hidden"></span>
                 </span>
               </label>
               <label>
                 Quantity
-                <input id="list-quantity" placeholder="2 heads" />
+                <input id="list-quantity" maxlength="120" placeholder="2 heads" />
               </label>
               <input id="list-tag" type="hidden" />
               <div class="tag-picker" aria-label="Item tag">
@@ -350,11 +355,11 @@
             <form id="edit-item-form" class="edit-item-form modal-form">
               <label>
                 Item
-                <input id="edit-item-name" autocomplete="off" required />
+                <input id="edit-item-name" maxlength="200" autocomplete="off" required />
               </label>
               <label>
                 Quantity
-                <input id="edit-item-quantity" />
+                <input id="edit-item-quantity" maxlength="120" />
               </label>
               <label>
                 Store area
@@ -388,11 +393,11 @@
             <form id="list-details-form" class="list-details-form modal-form">
               <label>
                 List name
-                <input id="detail-list-name" required placeholder="Whole Foods" />
+                <input id="detail-list-name" maxlength="200" required placeholder="Whole Foods" />
               </label>
               <label>
                 Shared with
-                <input id="detail-list-shared" type="email" multiple placeholder="roommate@example.com" />
+                <input id="detail-list-shared" maxlength="5100" type="email" multiple placeholder="roommate@example.com" />
               </label>
               <button class="primary" type="submit">Save list</button>
             </form>
@@ -413,6 +418,19 @@
 
     <datalist id="common-item-options"></datalist>
 
+    <dialog id="password-reset-dialog" class="app-dialog" aria-labelledby="reset-title">
+      <form id="password-reset-form" class="auth-form">
+        <h2 id="reset-title">Choose a new password</h2>
+        <label>New password<input id="reset-password" type="password" autocomplete="new-password" required minlength="8"></label>
+        <button class="primary" type="submit">Update password</button>
+        <p id="reset-message" role="status"></p>
+      </form>
+    </dialog>
+    <script src="boot.js"></script>
+    <script src="network.js"></script>
+    <script src="vendor/supabase.js"></script>
+    <script src="supabase-config.js"></script>
+    <script src="cloud-store.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

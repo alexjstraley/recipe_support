@@ -1561,3 +1561,16 @@ select:disabled {
     padding: 14px;
   }
 }
+.sync-bar { position: sticky; top: 0; z-index: 100; background: #f5f3ed; padding: 8px 16px; font-size: 14px; min-height: 20px; }
+.sync-error { color: #a32222; }
+.sync-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+button:focus-visible, summary:focus-visible { outline: 3px solid var(--leaf-dark); outline-offset: 3px; }
+.item-name, .profile-email, .pill, .list-chip strong { overflow-wrap: anywhere; }
+@media (pointer: coarse) {
+  input, textarea, select { font-size: 16px; }
+  button.small, .tag-select, .list-details-form input, .quick-add-form input { min-height: 44px; }
+  .item-actions { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+}
