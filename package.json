@@ -12,5 +12,5 @@
     "vendor": "node scripts/vendor.js"
   },
   "dependencies": { "@supabase/supabase-js": "2.115.0" },
-  "devDependencies": { "playwright": "1.62.1" }
+  "devDependencies": { "playwright": "1.63.0" }
 }
