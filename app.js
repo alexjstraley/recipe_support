@@ -102,6 +102,7 @@ let creatingRecipe = false;
 let activeListId = null;
 let editingItemRef = null;
 let manageItems = false;
+let manageRecipeIngredients = false;
 let draftRecipeIngredients = [];
 let editingIngredientId = null;
 let planningRecipes = false;
@@ -803,28 +804,38 @@ function renderRecipeIngredients(canEdit = true) {
   }
 
   const detail = document.createElement("article");
-  detail.className = "card active-list-card";
+  const canManage = canEdit && manageRecipeIngredients;
+  detail.className = `active-list-card shopping-list-card ${canManage ? "manage-mode" : ""}`;
   detail.innerHTML = `
+    ${canEdit ? `<div class="card-actions"><button id="toggle-manage-ingredients" class="ghost small" type="button" aria-pressed="${canManage}">${canManage ? "Done" : "Manage"}</button></div>` : ""}
     <ul class="items shopping-items">
       ${draftRecipeIngredients.map((ingredient) => `
         <li class="item-row ${ingredient.tag ? `tag-${escapeHtml(ingredient.tag)}` : ""}">
           <button class="item-tap-target" data-edit-recipe-ingredient="${escapeHtml(ingredient.id)}" type="button" aria-label="Edit ${escapeHtml(ingredient.name)}" title="Hold to edit ingredient" ${canEdit ? "" : "disabled"}>
           <span class="item-main">
             <span class="item-name">${escapeHtml(ingredient.name)}</span>
-            ${ingredient.quantity ? `<span class="item-subline">Amount: ${escapeHtml(ingredient.quantity)}</span>` : ""}
+            <span class="item-subline">
+              ${ingredient.quantity ? `<span class="item-quantity">${escapeHtml(ingredient.quantity)}</span>` : ""}
+              ${ingredient.tag ? `<span class="tag-pill tag-${escapeHtml(ingredient.tag)}">${escapeHtml(TAG_LABELS[ingredient.tag])}</span>` : ""}
+            </span>
           </span>
           </button>
-          <span class="item-actions">
+          ${canManage ? `<span class="item-actions">
             <select class="tag-select" data-recipe-tag="${escapeHtml(ingredient.id)}" aria-label="Tag ${escapeHtml(ingredient.name)}" ${canEdit ? "" : "disabled"}>
               ${tagOptions(ingredient.tag)}
             </select>
             <button class="danger small" data-remove-recipe-ingredient="${escapeHtml(ingredient.id)}" type="button" ${canEdit ? "" : "disabled"}>Remove</button>
-          </span>
+          </span>` : ""}
         </li>
       `).join("")}
     </ul>
   `;
   container.append(detail);
+  container.querySelector("#toggle-manage-ingredients")?.addEventListener("click", () => {
+    manageRecipeIngredients = !manageRecipeIngredients;
+    renderRecipeIngredients(canEdit);
+    container.querySelector("#toggle-manage-ingredients")?.focus();
+  });
   container.querySelectorAll("[data-edit-recipe-ingredient]").forEach(attachRecipeIngredientInteraction);
 
   container.querySelectorAll("[data-recipe-tag]").forEach((select) => select.addEventListener("change", () => tagDraftRecipeIngredient(select.dataset.recipeTag, select.value)));

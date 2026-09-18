@@ -72,7 +72,8 @@ const server = spawn(process.execPath, ["local-server.js"], { cwd: require("node
     await page.locator('#recipe-text-import-form button[type="submit"]').click();
     assert.equal(await page.locator("#recipe-ingredients-list .item-row").count(), 2);
     assert.equal(await page.locator("#recipe-ingredients-list .item-name").first().textContent(), "nutritional yeast");
-    assert.equal(await page.locator("#recipe-ingredients-list .item-subline").first().textContent(), "Amount: ½ cup");
+    assert.equal(await page.locator("#recipe-ingredients-list .item-quantity").first().textContent(), "½ cup");
+    assert.equal(await page.locator("[data-remove-recipe-ingredient]").count(), 0);
     assert.equal(await page.locator("#recipe-instructions").inputValue(), "Blend until smooth.");
     assert.deepEqual(await page.evaluate(() => draftRecipeIngredients.map(({name, quantity}) => ({name, quantity}))), [
       {name: "nutritional yeast", quantity: "½ cup"}, {name: "canned white beans", quantity: "1 cup"}
@@ -95,6 +96,7 @@ const server = spawn(process.execPath, ["local-server.js"], { cwd: require("node
     await page.locator("#recipe-ingredient-item").fill("Cancel this change");
     await page.locator("#clear-recipe-ingredient").click();
     assert.equal(await page.locator("#recipe-ingredients-list .item-name").nth(1).textContent(), "canned cannellini beans");
+    await page.locator("#toggle-manage-ingredients").click();
     for (let i = 0; i < 2; i++) await page.locator("[data-remove-recipe-ingredient]").first().click();
     await page.locator("#new-recipe").click();
     await page.locator("#recipe-name").fill("Cloud soup");
