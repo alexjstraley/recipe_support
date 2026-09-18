@@ -9,6 +9,14 @@ const server = spawn(process.execPath, ["local-server.js"], { cwd: require("node
     const mobile = process.env.MOBILE === "1";
     const page = await browser.newPage(mobile ? {viewport:{width:375,height:812},isMobile:true,hasTouch:true,deviceScaleFactor:2} : {});
     const errors = []; page.on("pageerror", e => errors.push(e.message));
+    await page.addInitScript(() => {
+      window.SpeechRecognition = class {
+        constructor() { window.testRecognition = this; }
+        start() { this.starts = (this.starts || 0) + 1; this.onstart?.(); }
+        stop() { this.onend?.(); }
+        abort() { this.aborted = true; this.onend?.(); }
+      };
+    });
     const user = { id: "11111111-1111-4111-8111-111111111111", email: "test@example.com", email_confirmed_at: "2026-01-01", aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {} };
     const token = Buffer.from(JSON.stringify({ alg: "HS256" })).toString("base64url")+"."+Buffer.from(JSON.stringify({ sub:user.id, exp: Math.floor(Date.now()/1000)+3600 })).toString("base64url")+".test";
     let workspace = { recipes: [], lists: [], tags: {}, profile: null };
@@ -59,7 +67,88 @@ const server = spawn(process.execPath, ["local-server.js"], { cwd: require("node
     assert.equal(workspace.lists[0].name,"Cloud shopping");
     await page.reload();
     await page.locator("#app-screen").waitFor({state:"visible"});
+    await page.locator("#open-add-item").click();
+    await page.locator('[data-voice-field="list-item"]').click();
+    assert.equal(await page.evaluate(() => testRecognition.continuous), true);
+    await page.evaluate(() => {
+      testRecognition.onerror({error:"no-speech"});
+      testRecognition.onend();
+    });
+    await page.waitForFunction(() => testRecognition.starts === 2);
+    assert.equal(await page.locator('[data-voice-field="list-item"]').getAttribute("aria-pressed"), "true");
+    await page.evaluate(() => {
+      const interim = Object.assign([{transcript:"brocc"}], {isFinal:false});
+      testRecognition.onresult({results:[interim]});
+    });
+    assert.equal(await page.locator("#list-item").inputValue(), "");
+    assert.match(await page.locator("#voice-status").textContent(), /Hearing: brocc/);
+    await page.evaluate(() => {
+      const result = Object.assign([{transcript:"Broccoli"}], {isFinal:true});
+      testRecognition.onresult({results:[result]});
+      testRecognition.onend();
+    });
+    assert.equal(await page.locator("#list-item").inputValue(), "Broccoli");
+    await page.locator('[data-voice-field="list-item"]').click();
+    await page.locator('[data-voice-field="list-quantity"]').click();
+    await page.evaluate(() => {
+      testRecognition.onresult({results:[Object.assign([{transcript:"2 heads"}], {isFinal:true})]});
+      testRecognition.onend();
+    });
+    assert.equal(await page.locator("#list-quantity").inputValue(), "2 heads");
+    await page.locator('[data-voice-field="list-quantity"]').click();
+    await page.locator('[data-voice-field="list-item"]').click();
+    await page.evaluate(() => {
+      testRecognition.onerror({error:"not-allowed"});
+      testRecognition.onend();
+    });
+    assert.match(await page.locator("#voice-status").textContent(), /denied/);
+    assert.equal(await page.locator("#list-item").inputValue(), "Broccoli");
+    await page.locator('[data-voice-field="list-item"]').click();
+    await page.locator("#clear-list").click();
+    await page.evaluate(() => testRecognition.onresult({results:[Object.assign([{transcript:"Late result"}], {isFinal:true})]}));
+    assert.equal(await page.locator("#list-item").inputValue(), "");
+    assert.equal(await page.evaluate(() => testRecognition.aborted), true);
+    await page.locator('[data-voice-field="list-item"]').click();
+    await page.evaluate(() => testRecognition.onresult({results:[Object.assign([{transcript:"carrots"}], {isFinal:false})]}));
+    await page.locator('[data-voice-field="list-item"]').click();
+    assert.equal(await page.locator("#list-item").inputValue(), "carrots");
+    assert.equal(await page.locator('[data-voice-field="list-item"]').isEnabled(), true);
+    await page.locator('[data-voice-field="list-item"]').click();
+    await page.evaluate(() => {
+      testRecognition.onresult({results:[Object.assign([{transcript:"carrots"}], {isFinal:true})]});
+      testRecognition.onend();
+    });
+    await page.waitForFunction(() => testRecognition.starts === 2);
+    await page.evaluate(() => testRecognition.onresult({results:[Object.assign([{transcript:"and broccoli"}], {isFinal:true})]}));
+    await page.locator('[data-voice-field="list-item"]').click();
+    assert.equal(await page.locator("#list-item").inputValue(), "carrots, broccoli");
+    await page.locator("#clear-list").click();
+    await page.locator('[data-voice-field="list-item"]').click();
+    await page.keyboard.press("Escape");
+    assert.equal(await page.evaluate(() => testRecognition.aborted), true);
     assert.match(await page.locator("#active-list-title").textContent(),/Cloud shopping/);
+    await page.locator("#open-add-item").click();
+    await page.locator("#list-item").fill(" , carrots, broccoli, , ");
+    await page.locator("#list-quantity").fill("2");
+    await page.locator('#list-form button[type="submit"]').click();
+    await page.waitForFunction(() => document.querySelector("#sync-status").textContent === "Saved to Supabase");
+    assert.deepEqual(workspace.lists[0].items.map(item => item.name), ["carrots", "broccoli"]);
+    assert.deepEqual(workspace.lists[0].items.map(item => item.quantity), ["2", "2"]);
+    await page.locator("#open-add-item").click();
+    await page.locator('[data-voice-field="list-item"]').click();
+    await page.evaluate(() => {
+      testRecognition.onresult({results:[Object.assign([{transcript:"Add carrots and broccoli."}], {isFinal:true})]});
+      testRecognition.onend();
+    });
+    assert.equal(await page.locator("#list-item").inputValue(), "carrots, broccoli");
+    await page.locator('#list-form button[type="submit"]').click();
+    await page.waitForFunction(() => document.querySelector("#sync-status").textContent === "Saved to Supabase");
+    assert.deepEqual(workspace.lists[0].items.map(item => item.name), ["carrots", "broccoli", "carrots", "broccoli"]);
+    await page.reload();
+    await page.locator("#app-screen").waitFor({state:"visible"});
+    assert.equal(await page.locator("[data-shopping-item]").count(), 4);
+    await page.evaluate(() => { state.lists[0].items = []; saveState(); render(); });
+    await page.waitForFunction(() => document.querySelector("#sync-status").textContent === "Saved to Supabase");
     await page.evaluate(() => { addGroceryItem(state.lists[0],"Beans","1/2 cup","green"); saveState(); render(); });
     await page.waitForFunction(() => document.querySelector("#sync-status").textContent === "Saved to Supabase");
     assert.equal(workspace.lists[0].items.length,1);
@@ -98,12 +187,19 @@ const server = spawn(process.execPath, ["local-server.js"], { cwd: require("node
     await page.locator("#edit-ingredient-name").fill("Cancel this change");
     await page.locator("#edit-ingredient-dialog button[value=cancel]").click();
     assert.equal(await page.locator("#recipe-ingredients-list .item-name").nth(1).textContent(), "canned cannellini beans");
-    await page.locator("#toggle-manage-ingredients").click();
+    if (await page.locator("#toggle-manage-ingredients").getAttribute("aria-pressed") !== "true") await page.locator("#toggle-manage-ingredients").click();
     for (let i = 0; i < 2; i++) await page.locator("[data-remove-recipe-ingredient]").first().click();
     await page.locator("#new-recipe").click();
     await page.locator("#recipe-name").fill("Cloud soup");
     assert.equal(await page.locator("#recipe-servings").inputValue(), "");
     await page.locator("#recipe-instructions").fill("Simmer until ready.");
+    await page.locator("#recipe-ingredient-item").fill("Carrots, broccoli, ,");
+    await page.locator("#recipe-ingredient-quantity").fill("1 cup");
+    await page.locator("#add-recipe-ingredient").click();
+    assert.deepEqual(await page.locator("#recipe-ingredients-list .item-name").allTextContents(), ["Carrots", "broccoli"]);
+    assert.deepEqual(await page.locator("#recipe-ingredients-list .item-quantity").allTextContents(), ["1 cup", "1 cup"]);
+    if (await page.locator("#toggle-manage-ingredients").getAttribute("aria-pressed") !== "true") await page.locator("#toggle-manage-ingredients").click();
+    for (let i = 0; i < 2; i++) await page.locator("[data-remove-recipe-ingredient]").first().click();
     await page.locator("#recipe-ingredient-item").fill("Lentils");
     await page.locator("#recipe-ingredient-quantity").fill("1 cup");
     await page.locator("#add-recipe-ingredient").click();

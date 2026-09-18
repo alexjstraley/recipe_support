@@ -1574,3 +1574,14 @@ button:focus-visible, summary:focus-visible { outline: 3px solid var(--leaf-dark
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+.voice-help {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
+.voice-help p { margin: 0 0 0.4rem; }
+
+[data-voice-field][aria-pressed="true"] {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}

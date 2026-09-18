@@ -229,7 +229,7 @@
                   <div class="quick-add-form recipe-ingredient-form">
                     <label>
                       Item
-                      <input id="recipe-ingredient-item" maxlength="200" list="common-item-options" placeholder="Red lentils" />
+                      <input id="recipe-ingredient-item" maxlength="2000" list="common-item-options" placeholder="Red lentils, carrots, broccoli" />
                     </label>
                     <label>
                       Quantity
@@ -254,7 +254,7 @@
                     </div>
                   </div>
                   <div id="recipe-ingredients-list" class="open-list-items"></div>
-                  <p class="hint">Hold an ingredient to edit its name, quantity, or tag.</p>
+                  <p class="hint">Separate ingredients with commas. Quantity and store area apply to every ingredient added. Hold an ingredient to edit its name, quantity, or tag.</p>
                 </div>
                 <label class="wide">
                   Instructions
@@ -318,14 +318,21 @@
               <label>
                 Item
                 <span class="typeahead-field">
-                  <input id="list-item" maxlength="200" autocomplete="off" placeholder="Broccoli" />
+                  <input id="list-item" maxlength="2000" autocomplete="off" placeholder="Carrots, broccoli" />
                   <span id="item-suggestions" class="typeahead-results hidden"></span>
                 </span>
+                <button class="ghost small" type="button" data-voice-field="list-item" aria-pressed="false">Use voice for item</button>
               </label>
               <label>
                 Quantity
                 <input id="list-quantity" maxlength="120" placeholder="2 heads" />
+                <button class="ghost small" type="button" data-voice-field="list-quantity" aria-pressed="false">Use voice for quantity</button>
               </label>
+              <div class="voice-help">
+                <p>Separate items with commas, or say “add carrots and broccoli.” Quantity and selected tag apply to every item added.</p>
+                <p id="voice-status" role="status" aria-live="polite">Select Use voice, speak your items, then Stop listening. Review the text before selecting Add item.</p>
+                <small>Your browser may send audio to its speech service. Voice entry replaces the selected field.</small>
+              </div>
               <input id="list-tag" type="hidden" />
               <div class="tag-picker" aria-label="Item tag">
                 <button class="tag-choice tag-green" data-list-tag="green" type="button">Veg</button>
@@ -448,5 +455,6 @@
     <script src="supabase-config.js"></script>
     <script src="cloud-store.js"></script>
     <script src="app.js"></script>
+    <script src="voice-entry.js"></script>
   </body>
 </html>

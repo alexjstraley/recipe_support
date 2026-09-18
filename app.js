@@ -473,7 +473,7 @@ $("#recipe-ingredient-item").addEventListener("change", () => {
 listForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const now = new Date().toISOString();
-  const newItem = $("#list-item").value.trim();
+  const names = splitIngredientNames($("#list-item").value);
   const quantity = $("#list-quantity").value.trim();
   const tag = $("#list-tag").value;
 
@@ -483,7 +483,12 @@ listForm.addEventListener("submit", (event) => {
     return;
   }
 
-  if (!newItem) {
+  if (!names.length) {
+    $("#list-item").focus();
+    return;
+  }
+  if (names.some(name => name.length > 200)) {
+    alert("Keep each item under 201 characters. Separate multiple items with commas.");
     $("#list-item").focus();
     return;
   }
@@ -491,7 +496,7 @@ listForm.addEventListener("submit", (event) => {
   const list = state.lists.find((item) => item.id === activeListId);
   if (!list || !assertOwner(list)) return;
 
-  addGroceryItem(list, newItem, quantity, tag);
+  names.forEach(name => addGroceryItem(list, name, quantity, tag));
   list.updatedAt = now;
   saveState();
   clearListItemFields();
@@ -1575,22 +1580,35 @@ function clearRecipeFields() {
   renderRecipeIngredients(true);
 }
 
+function splitIngredientNames(value) {
+  return value.split(",").map(name => name.trim()).filter(Boolean);
+}
+
 function addDraftRecipeIngredient() {
   const name = $("#recipe-ingredient-item").value.trim();
   const quantity = $("#recipe-ingredient-quantity").value.trim();
   const tag = $("#recipe-ingredient-tag").value;
 
-  if (!name) {
+  const names = editingIngredientId ? (name ? [name] : []) : splitIngredientNames(name);
+  if (!names.length) {
+    $("#recipe-ingredient-item").focus();
+    return false;
+  }
+  if (names.some(name => name.length > 200)) {
+    alert("Keep each ingredient under 201 characters. Separate multiple ingredients with commas.");
     $("#recipe-ingredient-item").focus();
     return false;
   }
 
   recipeDirty = true;
   const ingredient = draftRecipeIngredients.find((item) => item.id === editingIngredientId);
-  if (ingredient) Object.assign(ingredient, { name, quantity, tag: normalizeTag(tag) });
-  else draftRecipeIngredients.push({ id: id("ingredient"), name, quantity, tag: normalizeTag(tag) });
-  if (tag) rememberTag(name, tag);
-  learnStandardItem(name, tag);
+  names.forEach(name => {
+    const itemTag = normalizeTag(tag) || getSuggestedTag(name);
+    if (ingredient) Object.assign(ingredient, { name, quantity, tag: itemTag });
+    else draftRecipeIngredients.push({ id: id("ingredient"), name, quantity, tag: itemTag });
+    if (itemTag) rememberTag(name, itemTag);
+    learnStandardItem(name, itemTag);
+  });
   clearRecipeIngredientFields();
   renderRecipeIngredients(true);
   return true;
@@ -1695,7 +1713,7 @@ function closeDialog(selector) {
 function renderItemSuggestions() {
   const container = $("#item-suggestions");
   const query = normalizeItemName($("#list-item").value);
-  if (!query) {
+  if (!query || document.activeElement !== $("#list-item")) {
     hideItemSuggestions();
     return;
   }

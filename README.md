@@ -37,3 +37,10 @@ Use **Refresh cloud data** in Profile to see other-device changes or new shares.
 - `supabase/tests/cloud_operations.sql`: live database transaction test for persistence, atomic rollback, stale writes, shared-reader restrictions, anonymous denial, and cascading deletion. Rolls back all test data.
 
 Database and browser tests passed. Supabase security advisors reported no findings. Actual email delivery and login with your confirmed account remain to be exercised.
+# Voice entry
+
+Open a grocery list, select **Add item**, then **Use voice for item**. Allow microphone access and speak your items, for example “add carrots and broccoli.” Select **Stop listening** when finished. Use **Use voice for quantity** for amounts such as “2 heads.” Review or edit the comma-separated items, then select **Add item** to save through the normal list sync. Each recording replaces its selected field.
+
+Voice entry listens through pauses and resumes after brief speech-service endings, keeping the captured text. Partial transcripts are kept for review when recording ends. A session stops after one minute or three consecutive empty speech-service endings; microphone permission and connection errors stop immediately.
+
+Voice entry requires HTTPS (or localhost) and a browser with `SpeechRecognition` or `webkitSpeechRecognition`. Unsupported browsers retain typed entry. Recognition may use the browser provider’s online speech service; the app does not store audio. Closing the dialog, clearing or submitting the form, typing in either field, or leaving the page stops recognition.
