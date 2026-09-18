@@ -218,7 +218,7 @@
                 </label>
                 <label>
                   Servings
-                  <input id="recipe-servings" type="number" max="1000" min="1" value="4" required />
+                  <input id="recipe-servings" type="number" max="1000" min="1" />
                 </label>
                 <label class="wide">
                   Shared with
@@ -417,6 +417,22 @@
     </template>
 
     <datalist id="common-item-options"></datalist>
+
+    <dialog id="edit-ingredient-dialog" class="app-dialog" aria-labelledby="edit-ingredient-title">
+      <form method="dialog" class="dialog-chrome">
+        <div><p class="eyebrow">Recipe ingredient</p><h3 id="edit-ingredient-title">Edit ingredient</h3></div>
+        <button class="ghost small" type="submit" value="cancel">Cancel</button>
+      </form>
+      <form id="edit-ingredient-form" class="edit-item-form modal-form">
+        <label>Item<input id="edit-ingredient-name" maxlength="200" required autocomplete="off" /></label>
+        <label>Quantity<input id="edit-ingredient-quantity" maxlength="120" /></label>
+        <label>Store area<select id="edit-ingredient-tag"></select></label>
+        <div class="form-actions modal-actions">
+          <button class="primary" type="submit">Save ingredient</button>
+          <button id="remove-edit-ingredient" class="danger" type="button">Remove ingredient</button>
+        </div>
+      </form>
+    </dialog>
 
     <dialog id="password-reset-dialog" class="app-dialog" aria-labelledby="reset-title">
       <form id="password-reset-form" class="auth-form">

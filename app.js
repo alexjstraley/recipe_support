@@ -103,6 +103,7 @@ let activeListId = null;
 let editingItemRef = null;
 let manageItems = false;
 let manageRecipeIngredients = false;
+let editingRecipeIngredientRef = null;
 let draftRecipeIngredients = [];
 let editingIngredientId = null;
 let planningRecipes = false;
@@ -412,7 +413,7 @@ recipeForm.addEventListener("submit", (event) => {
   const now = new Date().toISOString();
   const payload = {
     title: $("#recipe-name").value.trim(),
-    servings: Number($("#recipe-servings").value),
+    servings: $("#recipe-servings").value === "" ? null : Number($("#recipe-servings").value),
     sharedWith: parseEmails($("#recipe-shared").value),
     ingredients: draftRecipeIngredients.map((ingredient) => ({ ...ingredient })),
     instructions: $("#recipe-instructions").value.trim(),
@@ -543,6 +544,32 @@ $("#list-switcher").addEventListener("change", (event) => openList(event.target.
 $("#clear-checked").addEventListener("click", clearCheckedItems);
 $("#edit-item-form").addEventListener("submit", saveEditedItem);
 $("#remove-edit-item").addEventListener("click", removeEditingItem);
+$("#edit-ingredient-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const ingredient = draftRecipeIngredients.find((item) => item.id === editingRecipeIngredientRef);
+  const name = $("#edit-ingredient-name").value.trim();
+  if (!ingredient || !name) return;
+  Object.assign(ingredient, {
+    name,
+    quantity: $("#edit-ingredient-quantity").value.trim(),
+    tag: normalizeTag($("#edit-ingredient-tag").value)
+  });
+  recipeDirty = true;
+  if (ingredient.tag) rememberTag(name, ingredient.tag);
+  learnStandardItem(name, ingredient.tag);
+  closeDialog("#edit-ingredient-dialog");
+  renderRecipeIngredients(true);
+  focusRecipeIngredient(ingredient.id);
+});
+$("#remove-edit-ingredient").addEventListener("click", () => {
+  const ingredientId = editingRecipeIngredientRef;
+  closeDialog("#edit-ingredient-dialog");
+  if (ingredientId) removeDraftRecipeIngredient(ingredientId);
+  $("#recipe-ingredients-list button")?.focus({ preventScroll: true });
+});
+$("#edit-ingredient-dialog").addEventListener("close", () => {
+  editingRecipeIngredientRef = null;
+});
 document.querySelectorAll("[data-list-tag]").forEach((button) => {
   button.addEventListener("click", () => setListTag(button.dataset.listTag));
 });
@@ -715,7 +742,7 @@ function renderRecipes(recipes, lists) {
     button.innerHTML = `
       <span>
         <strong>${escapeHtml(recipe.title)}</strong>
-        <small>${recipe.servings} servings &middot; ${normalizeRecipeIngredients(recipe.ingredients).length} ingredients</small>
+        <small>${recipe.servings ? `${escapeHtml(recipe.servings)} servings &middot; ` : ""}${normalizeRecipeIngredients(recipe.ingredients).length} ingredients</small>
       </span>
       <span class="recipe-select-indicator" aria-hidden="true">${isPlanned ? "Selected" : "Select"}</span>
     `;
@@ -754,7 +781,7 @@ function renderActiveRecipe(recipe, lists) {
   if (recipe) {
     draftRecipeIngredients = normalizeRecipeIngredients(recipe.ingredients);
     $("#recipe-name").value = recipe.title;
-    $("#recipe-servings").value = recipe.servings;
+    $("#recipe-servings").value = recipe.servings ?? "";
     $("#recipe-shared").value = recipe.sharedWith.join(", ");
     $("#recipe-instructions").value = recipe.instructions;
   } else {
@@ -1514,7 +1541,7 @@ function fallbackRecipeFromDocument(document, url) {
 
   return {
     title: pageTitle(document, url),
-    servings: 4,
+    servings: null,
     ingredients: ingredientText.map(parseImportedIngredient).filter((ingredient) => ingredient.name),
     instructions: instructionText.join("\n")
   };
@@ -1528,7 +1555,7 @@ function applyImportedRecipe(recipe) {
   clearRecipeFields();
   $("#active-recipe-title").textContent = recipe.title || "Imported recipe";
   $("#recipe-name").value = recipe.title || "";
-  $("#recipe-servings").value = recipe.servings || 4;
+  $("#recipe-servings").value = recipe.servings ?? "";
   $("#recipe-instructions").value = recipe.instructions || "";
   draftRecipeIngredients = recipe.ingredients.map((ingredient) => ({
     id: id("ingredient"),
@@ -1543,7 +1570,7 @@ function applyImportedRecipe(recipe) {
 function clearRecipeFields() {
   draftRecipeIngredients = [];
   recipeForm.reset();
-  $("#recipe-servings").value = 4;
+  $("#recipe-servings").value = "";
   clearRecipeIngredientFields();
   renderRecipeIngredients(true);
 }
@@ -1572,12 +1599,17 @@ function addDraftRecipeIngredient() {
 function editDraftRecipeIngredient(ingredientId) {
   const ingredient = draftRecipeIngredients.find((item) => item.id === ingredientId);
   if (!ingredient) return;
-  editingIngredientId = ingredientId;
-  $("#recipe-ingredient-item").value = ingredient.name;
-  $("#recipe-ingredient-quantity").value = ingredient.quantity;
-  $("#recipe-ingredient-tag").value = ingredient.tag;
-  renderRecipeIngredients(true);
-  $("#recipe-ingredient-item").focus();
+  editingRecipeIngredientRef = ingredientId;
+  $("#edit-ingredient-name").value = ingredient.name;
+  $("#edit-ingredient-quantity").value = ingredient.quantity;
+  $("#edit-ingredient-tag").innerHTML = tagOptions(ingredient.tag);
+  openDialog("#edit-ingredient-dialog");
+  $("#edit-ingredient-name").focus({ preventScroll: true });
+}
+
+function focusRecipeIngredient(ingredientId) {
+  Array.from(document.querySelectorAll("[data-edit-recipe-ingredient]"))
+    .find((button) => button.dataset.editRecipeIngredient === ingredientId)?.focus({ preventScroll: true });
 }
 
 function attachRecipeIngredientInteraction(button) {
@@ -1798,7 +1830,7 @@ function uniqueLines(lines) {
 function parseServings(value) {
   const text = cleanText(arrayify(value).join(" "));
   const match = text.match(/\d+/);
-  return match ? Number(match[0]) : 4;
+  return match ? Number(match[0]) : null;
 }
 
 function recipeInstructionsToText(instructions) {

@@ -60,6 +60,7 @@ test("pasted mac and cheese ignores Markdown fences and ingredient subheadings",
 test("Markdown headings and plain ingredients work without cooking directions", () => {
   const recipe = context.parseRecipeText("# Soup\n## Ingredients\n**For the soup**\n~~~text\n- 1/2 cup lentils\n- Salt to taste\n~~~");
   assert.equal(recipe.title, "Soup");
+  assert.equal(recipe.servings, null);
   assert.deepEqual(Array.from(recipe.ingredients, ({ quantity, name }) => [quantity, name]), [["1/2 cup", "lentils"], ["", "Salt"]]);
 });
 

@@ -3,6 +3,11 @@ const assert = require("node:assert/strict");
 const store = require("../cloud-store");
 const user = { id: "user-1", email: "owner@example.com" };
 const defaults = { recipes: [], lists: [], commonItems: [], removedCommonItems: [], itemTags: {} };
+test("decode keeps unspecified servings blank", () => {
+  const row = { id: "r", owner_id: user.id, title: "Soup", servings: null, ingredients: [] };
+  const state = store.decode({ recipes: [row], lists: [], tags: {}, profile: null }, user, defaults);
+  assert.equal(state.recipes[0].servings, null);
+});
 test("decode preserves versions and checked state; another owner's record is never written", () => {
   const row = { id: "r", owner_id: "other", title: "Shared", servings: "2", instructions: "", ingredients: [], shares: [user.email], updated_at: "version" };
   const state = store.decode({ recipes: [row], lists: [], tags: {}, profile: null }, user, defaults);

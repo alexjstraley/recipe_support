@@ -5,7 +5,7 @@
       owner: row.owner_id === user.id ? user.email : "another member",
       sharedWith: row.shares || [], createdAt: row.created_at,
       updatedAt: row.updated_at, _version: row.updated_at,
-      ...(isRecipe ? { title: row.title, servings: Number(row.servings), instructions: row.instructions,
+      ...(isRecipe ? { title: row.title, servings: row.servings == null ? null : Number(row.servings), instructions: row.instructions,
         ingredients: row.ingredients.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, tag: i.tag })) }
         : { name: row.name, items: row.items.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, tag: i.tag, done: i.checked, addedAt: i.created_at })) })
     });
