@@ -356,7 +356,7 @@ $("#export-data").addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(exportable, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = "recipe-support-export.json";
+  link.download = "shopping-list-export.json";
   link.click();
   URL.revokeObjectURL(link.href);
 });
@@ -2037,7 +2037,7 @@ function escapeHtml(value) {
 
 $("#refresh-data").addEventListener("click", refreshWorkspace);
 $("#download-unsaved").addEventListener("click", () => {
-  if (failedDraft) downloadJSON({ email: sessionEmail, recipes: failedDraft.recipes, lists: failedDraft.lists, itemTags: failedDraft.itemTags, commonItems: failedDraft.commonItems }, "recipe-support-unsaved.json");
+  if (failedDraft) downloadJSON({ email: sessionEmail, recipes: failedDraft.recipes, lists: failedDraft.lists, itemTags: failedDraft.itemTags, commonItems: failedDraft.commonItems }, "shopping-list-unsaved.json");
 });
 $("#import-local").addEventListener("click", async () => {
   if (busy) return;

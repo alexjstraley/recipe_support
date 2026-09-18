@@ -54,7 +54,7 @@ server.keepAliveTimeout = 5000;
 
 server.listen(port, host, () => {
   const url = `http://127.0.0.1:${port}/index.html`;
-  console.log(`Recipe Support is running at ${url}`);
+  console.log(`Shopping list is running at ${url}`);
   if (!process.env.NO_OPEN) childProcess.exec(`cmd /c start "" "${url}"`);
 });
 

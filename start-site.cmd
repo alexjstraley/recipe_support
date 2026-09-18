@@ -17,7 +17,7 @@ if exist "%BUNDLED_NODE%" (
   set "NODE_EXE=node.exe"
 )
 
-echo Starting Recipe Support...
+echo Starting Shopping list...
 echo.
 echo Keep this window open while you test the site.
 echo.

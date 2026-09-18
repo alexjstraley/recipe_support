@@ -1,10 +1,10 @@
-# Recipe Support
+# Shopping list
 
 A private recipe and grocery workspace using Supabase Auth and PostgreSQL.
 
 ## Run
 
-Run `start-site.cmd` on Windows, or `node local-server.js`. Open [Recipe Support](http://127.0.0.1:4173/index.html). Restart a previously running server after updating. Use HTTP localhost or HTTPS hosting rather than opening the HTML as a file.
+Run `start-site.cmd` on Windows, or `node local-server.js`. Open [Shopping list](http://127.0.0.1:4173/index.html). Restart a previously running server after updating. Use HTTP localhost or HTTPS hosting rather than opening the HTML as a file.
 
 The browser configuration in `supabase-config.js` points to project `gsxjvjrzcqlldfgdzsjm` and contains only the public publishable key. Never put secret or service-role keys in frontend files. The local server serves only public assets, excluding environment files and Git/database files.
 
