@@ -103,6 +103,7 @@ let activeListId = null;
 let editingItemRef = null;
 let manageItems = false;
 let draftRecipeIngredients = [];
+let editingIngredientId = null;
 let planningRecipes = false;
 let plannedRecipeIds = new Set();
 
@@ -404,7 +405,9 @@ $("#standard-item-name").addEventListener("change", () => {
 
 recipeForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  if ($("#recipe-ingredient-item").value.trim()) addDraftRecipeIngredient();
+  if (editingIngredientId || $("#recipe-ingredient-item").value.trim()) {
+    if (!addDraftRecipeIngredient()) return;
+  }
   const now = new Date().toISOString();
   const payload = {
     title: $("#recipe-name").value.trim(),
@@ -581,6 +584,7 @@ async function handleSession(session) {
   renderCommonItemOptions();
   renderStandardItems();
   editingRecipeId = null; activeListId = null; draftRecipeIngredients = [];
+  clearRecipeIngredientFields();
   plannedRecipeIds.clear();
   document.querySelectorAll("dialog[open]").forEach(dialog => dialog.close());
   if (!user) { setBusy(false); showAuth(); setStatus(""); return; }
@@ -740,7 +744,11 @@ function renderActiveRecipe(recipe, lists) {
   const pendingDraft = recipeDirty ? {
     title: $("#recipe-name").value, servings: $("#recipe-servings").value,
     shared: $("#recipe-shared").value, instructions: $("#recipe-instructions").value,
-    ingredients: structuredClone(draftRecipeIngredients)
+    ingredients: structuredClone(draftRecipeIngredients),
+    ingredientEditor: {
+      id: editingIngredientId, name: $("#recipe-ingredient-item").value,
+      quantity: $("#recipe-ingredient-quantity").value, tag: $("#recipe-ingredient-tag").value
+    }
   } : null;
   if (recipe) {
     draftRecipeIngredients = normalizeRecipeIngredients(recipe.ingredients);
@@ -755,6 +763,10 @@ function renderActiveRecipe(recipe, lists) {
     $("#recipe-name").value = pendingDraft.title; $("#recipe-servings").value = pendingDraft.servings;
     $("#recipe-shared").value = pendingDraft.shared; $("#recipe-instructions").value = pendingDraft.instructions;
     draftRecipeIngredients = pendingDraft.ingredients;
+    editingIngredientId = pendingDraft.ingredientEditor.id;
+    $("#recipe-ingredient-item").value = pendingDraft.ingredientEditor.name;
+    $("#recipe-ingredient-quantity").value = pendingDraft.ingredientEditor.quantity;
+    $("#recipe-ingredient-tag").value = pendingDraft.ingredientEditor.tag;
   }
   renderRecipeIngredients(canEdit);
 
@@ -782,6 +794,8 @@ function renderRecipeIngredients(canEdit = true) {
   container.innerHTML = "";
   $("#add-recipe-ingredient").disabled = !canEdit;
   $("#clear-recipe-ingredient").disabled = !canEdit;
+  $("#add-recipe-ingredient").textContent = editingIngredientId ? "Update ingredient" : "Add ingredient";
+  $("#clear-recipe-ingredient").textContent = editingIngredientId ? "Cancel edit" : "Clear item";
 
   if (!draftRecipeIngredients.length) {
     container.innerHTML = `<div class="empty-inline">Add the first ingredient above.</div>`;
@@ -794,10 +808,12 @@ function renderRecipeIngredients(canEdit = true) {
     <ul class="items shopping-items">
       ${draftRecipeIngredients.map((ingredient) => `
         <li class="item-row ${ingredient.tag ? `tag-${escapeHtml(ingredient.tag)}` : ""}">
+          <button class="item-tap-target" data-edit-recipe-ingredient="${escapeHtml(ingredient.id)}" type="button" aria-label="Edit ${escapeHtml(ingredient.name)}" title="Hold to edit ingredient" ${canEdit ? "" : "disabled"}>
           <span class="item-main">
-            ${ingredient.quantity ? `<span class="item-quantity">${escapeHtml(ingredient.quantity)}</span>` : ""}
-            <span>${escapeHtml(ingredient.name)}</span>
+            <span class="item-name">${escapeHtml(ingredient.name)}</span>
+            ${ingredient.quantity ? `<span class="item-subline">Amount: ${escapeHtml(ingredient.quantity)}</span>` : ""}
           </span>
+          </button>
           <span class="item-actions">
             <select class="tag-select" data-recipe-tag="${escapeHtml(ingredient.id)}" aria-label="Tag ${escapeHtml(ingredient.name)}" ${canEdit ? "" : "disabled"}>
               ${tagOptions(ingredient.tag)}
@@ -809,6 +825,7 @@ function renderRecipeIngredients(canEdit = true) {
     </ul>
   `;
   container.append(detail);
+  container.querySelectorAll("[data-edit-recipe-ingredient]").forEach(attachRecipeIngredientInteraction);
 
   container.querySelectorAll("[data-recipe-tag]").forEach((select) => select.addEventListener("change", () => tagDraftRecipeIngredient(select.dataset.recipeTag, select.value)));
   container.querySelectorAll("[data-remove-recipe-ingredient]").forEach((button) => button.addEventListener("click", () => removeDraftRecipeIngredient(button.dataset.removeRecipeIngredient)));
@@ -941,6 +958,7 @@ function openRecipe(recipeId) {
   if (recipeId !== editingRecipeId && !discardRecipeDraft()) return;
   const recipe = state.recipes.find((item) => item.id === recipeId);
   if (!recipe || !canAccess(recipe)) return;
+  if (recipeId !== editingRecipeId) clearRecipeIngredientFields();
   editingRecipeId = recipeId;
   creatingRecipe = false;
   render();
@@ -1333,6 +1351,8 @@ function parseRecipeText(text) {
     .replace(/\r/g, "")
     .split("\n")
     .map(cleanText)
+    .filter((line) => !/^(?:`{3,}|~{3,})/.test(line) && !/^["“”]+$/.test(line))
+    .map((line) => line.replace(/^#{1,6}\s+/, "").replace(/\*\*([^*]+)\*\*/g, "$1"))
     .filter(Boolean);
   const title = inferRecipeTitle(lines);
   const servings = parseServings(lines.find((line) => /servings?|yield/i.test(line)) || "");
@@ -1373,7 +1393,7 @@ function splitRecipeTextSections(lines) {
       mode = "other";
       return;
     }
-    if (mode === "ingredients") ingredients.push(stripListMarker(line));
+    if (mode === "ingredients" && !isIngredientSubheading(line)) ingredients.push(stripListMarker(line));
     if (mode === "instructions") instructions.push(stripListMarker(line));
   });
 
@@ -1394,7 +1414,7 @@ function inferRecipeTextSections(lines, existingIngredients, existingInstruction
   const likelyInstruction = /^(?:\d+[\.)]|step\s+\d+|[-*•])\s+|(?:preheat|mix|stir|cook|bake|simmer|add|combine|serve|whisk|chop|heat)\b/i;
 
   lines.forEach((line, index) => {
-    if (index === 0 || /^(ingredients?|instructions?|directions?|method|steps?|servings?|yield)\b/i.test(line)) return;
+    if (index === 0 || isIngredientSubheading(line) || /^(ingredients?|instructions?|directions?|method|steps?|servings?|yield)\b/i.test(line)) return;
     const cleanLine = stripListMarker(line);
     if (!existingIngredients.length && likelyIngredient.test(line) && !/[.!?]$/.test(line)) {
       ingredients.push(cleanLine);
@@ -1409,6 +1429,10 @@ function inferRecipeTextSections(lines, existingIngredients, existingInstruction
     ingredients: uniqueLines(ingredients),
     instructions: uniqueLines(instructions)
   };
+}
+
+function isIngredientSubheading(line) {
+  return /^for\s+(?:the\s+)?\D/i.test(line) || /:$/.test(line);
 }
 
 function stripListMarker(line) {
@@ -1520,23 +1544,55 @@ function addDraftRecipeIngredient() {
 
   if (!name) {
     $("#recipe-ingredient-item").focus();
-    return;
+    return false;
   }
 
   recipeDirty = true;
-  draftRecipeIngredients.push({
-    id: id("ingredient"),
-    name,
-    quantity,
-    tag: normalizeTag(tag)
-  });
+  const ingredient = draftRecipeIngredients.find((item) => item.id === editingIngredientId);
+  if (ingredient) Object.assign(ingredient, { name, quantity, tag: normalizeTag(tag) });
+  else draftRecipeIngredients.push({ id: id("ingredient"), name, quantity, tag: normalizeTag(tag) });
   if (tag) rememberTag(name, tag);
   learnStandardItem(name, tag);
   clearRecipeIngredientFields();
   renderRecipeIngredients(true);
+  return true;
+}
+
+function editDraftRecipeIngredient(ingredientId) {
+  const ingredient = draftRecipeIngredients.find((item) => item.id === ingredientId);
+  if (!ingredient) return;
+  editingIngredientId = ingredientId;
+  $("#recipe-ingredient-item").value = ingredient.name;
+  $("#recipe-ingredient-quantity").value = ingredient.quantity;
+  $("#recipe-ingredient-tag").value = ingredient.tag;
+  renderRecipeIngredients(true);
+  $("#recipe-ingredient-item").focus();
+}
+
+function attachRecipeIngredientInteraction(button) {
+  let timer = null;
+  let origin = null;
+  const clearTimer = () => { clearTimeout(timer); timer = null; };
+  const edit = () => { if (!button.disabled) editDraftRecipeIngredient(button.dataset.editRecipeIngredient); };
+  button.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || button.disabled) return;
+    clearTimer();
+    origin = { x: event.clientX, y: event.clientY };
+    timer = setTimeout(edit, 550);
+  });
+  button.addEventListener("pointermove", (event) => {
+    if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 10) clearTimer();
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach((eventName) => button.addEventListener(eventName, clearTimer));
+  button.addEventListener("contextmenu", (event) => event.preventDefault());
+  button.addEventListener("click", (event) => {
+    // Keyboard and assistive technology activation does not require holding.
+    if (event.detail === 0) edit();
+  });
 }
 
 function removeDraftRecipeIngredient(ingredientId) {
+  if (editingIngredientId === ingredientId) clearRecipeIngredientFields();
   recipeDirty = true;
   draftRecipeIngredients = draftRecipeIngredients.filter((ingredient) => ingredient.id !== ingredientId);
   renderRecipeIngredients(true);
@@ -1553,6 +1609,9 @@ function tagDraftRecipeIngredient(ingredientId, tag) {
 }
 
 function clearRecipeIngredientFields() {
+  editingIngredientId = null;
+  $("#add-recipe-ingredient").textContent = "Add ingredient";
+  $("#clear-recipe-ingredient").textContent = "Clear item";
   $("#recipe-ingredient-item").value = "";
   $("#recipe-ingredient-quantity").value = "";
   $("#recipe-ingredient-tag").value = "";
@@ -1748,9 +1807,19 @@ function parseImportedIngredient(line) {
   const text = cleanText(line);
   const match = text.match(/^((?:\d+[\d\s./-]*|[¼½¾⅓⅔⅛⅜⅝⅞]+)\s*(?:cups?|tbsp|tablespoons?|tsp|teaspoons?|oz|ounces?|lb|lbs|pounds?|g|grams?|kg|ml|l|liters?|cloves?|heads?|bunch(?:es)?|cans?|packages?|pinch(?:es)?|slices?)?)\s+(.+)$/i);
   const quantity = cleanText(match?.[1] || "");
-  const name = cleanText(match?.[2] || text);
+  const name = mainIngredientName(match?.[2] || text);
   const tag = getSuggestedTag(name);
   return { name, quantity, tag };
+}
+
+function mainIngredientName(value) {
+  let text = cleanText(value);
+  // Remove balanced parenthetical amounts, alternatives, and preparation notes.
+  while (/\([^()]*\)/.test(text)) text = text.replace(/\([^()]*\)/g, " ");
+  text = text.split(/\s+or\s+/i)[0];
+  text = text.replace(/,\s*(?:rinsed|drained|peeled|diced|chopped|minced|sliced|grated|shredded|crushed|melted|softened|beaten|sifted|divided|plus|for|to|at room temperature|optional)\b.*$/i, "");
+  text = text.replace(/\s+(?:to taste|as needed|for (?:serving|garnish|topping))\b.*$/i, "");
+  return cleanText(text).replace(/[,;\s]+$/, "") || cleanText(value);
 }
 
 function renderStandardItems() {
