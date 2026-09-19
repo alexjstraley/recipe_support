@@ -1579,6 +1579,31 @@ button:focus-visible, summary:focus-visible { outline: 3px solid var(--leaf-dark
   overflow-wrap: anywhere;
 }
 
+.voice-item-field { display: grid; gap: 6px; min-width: 0; }
+.voice-input-row { display: flex; align-items: center; gap: 6px; }
+.voice-input-row .typeahead-field { flex: 1; min-width: 0; }
+.voice-input-row input { width: 100%; }
+button.voice-mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: none;
+  color: var(--muted);
+  background: transparent;
+}
+button.voice-mic:hover, button.voice-mic[aria-pressed="true"] {
+  color: var(--leaf-dark);
+  background: var(--mint);
+}
+.voice-mic .stop-icon, .voice-mic[aria-pressed="true"] .mic-icon { display: none; }
+.voice-mic[aria-pressed="true"] .stop-icon { display: block; }
+
 .voice-help p { margin: 0 0 0.4rem; }
 
 [data-voice-field][aria-pressed="true"] {

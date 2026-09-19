@@ -39,7 +39,7 @@ Use **Refresh cloud data** in Profile to see other-device changes or new shares.
 Database and browser tests passed. Supabase security advisors reported no findings. Actual email delivery and login with your confirmed account remain to be exercised.
 # Voice entry
 
-Open a grocery list, select **Add item**, then **Use voice for item**. Allow microphone access and speak your items, for example “add carrots and broccoli.” Select **Stop listening** when finished. Use **Use voice for quantity** for amounts such as “2 heads.” Review or edit the comma-separated items, then select **Add item** to save through the normal list sync. Each recording replaces its selected field.
+Open a grocery list, select **Add item**, then tap the microphone beside the item field. Allow microphone access and speak your items, for example “add carrots and broccoli.” Tap the stop icon when finished. Type a quantity if needed. Review or edit the comma-separated items, then select **Add item** to save through the normal list sync. Each recording replaces the item field.
 
 Voice entry listens through pauses and resumes after brief speech-service endings, keeping the captured text. Partial transcripts are kept for review when recording ends. A session stops after one minute or three consecutive empty speech-service endings; microphone permission and connection errors stop immediately.
 

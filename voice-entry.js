@@ -8,15 +8,15 @@
   let restartTimer;
   let sessionTimer;
   let finishTimer;
-  const labels = buttons.map(button => button.textContent);
 
   function resetButtons() {
     clearTimeout(restartTimer);
     clearTimeout(sessionTimer);
     clearTimeout(finishTimer);
     stopListening = null;
-    buttons.forEach((button, index) => {
-      button.textContent = labels[index];
+    buttons.forEach(button => {
+      button.setAttribute("aria-label", "Start voice entry");
+      button.title = "Start voice entry";
       button.setAttribute("aria-pressed", "false");
       button.disabled = false;
     });
@@ -61,7 +61,8 @@
       recognition.continuous = true;
       recognition.interimResults = true;
       buttons.forEach(other => { other.disabled = other !== button; });
-      button.textContent = "Stop listening";
+      button.setAttribute("aria-label", "Stop listening");
+      button.title = "Stop listening";
       button.setAttribute("aria-pressed", "true");
       status.textContent = "Starting microphone… Allow microphone access if prompted.";
       recognition.onstart = () => {
@@ -168,7 +169,7 @@
   dialog.addEventListener("cancel", cancel);
   dialog.addEventListener("submit", cancel, true);
   document.querySelector("#clear-list").addEventListener("click", cancel, true);
-  buttons.forEach(button => document.getElementById(button.dataset.voiceField).addEventListener("input", event => {
+  dialog.querySelectorAll("#list-item, #list-quantity").forEach(field => field.addEventListener("input", event => {
     if (event.isTrusted) cancel();
   }));
   document.addEventListener("visibilitychange", () => { if (document.hidden) cancel(); });

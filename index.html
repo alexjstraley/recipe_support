@@ -315,22 +315,26 @@
             </form>
 
             <form id="list-form" class="quick-add-form modal-form">
-              <label>
-                Item
+              <div class="voice-item-field">
+                <label for="list-item">Item</label>
+                <div class="voice-input-row">
                 <span class="typeahead-field">
                   <input id="list-item" maxlength="2000" autocomplete="off" placeholder="Carrots, broccoli" />
                   <span id="item-suggestions" class="typeahead-results hidden"></span>
                 </span>
-                <button class="ghost small" type="button" data-voice-field="list-item" aria-pressed="false">Use voice for item</button>
-              </label>
+                <button class="ghost voice-mic" type="button" data-voice-field="list-item" aria-pressed="false" aria-label="Start voice entry" title="Start voice entry" aria-describedby="voice-status">
+                  <svg class="mic-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>
+                  <svg class="stop-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                </button>
+                </div>
+              </div>
               <label>
                 Quantity
                 <input id="list-quantity" maxlength="120" placeholder="2 heads" />
-                <button class="ghost small" type="button" data-voice-field="list-quantity" aria-pressed="false">Use voice for quantity</button>
               </label>
               <div class="voice-help">
                 <p>Separate items with commas, or say “add carrots and broccoli.” Quantity and selected tag apply to every item added.</p>
-                <p id="voice-status" role="status" aria-live="polite">Select Use voice, speak your items, then Stop listening. Review the text before selecting Add item.</p>
+                <p id="voice-status" role="status" aria-live="polite">Tap the microphone to speak, then tap stop. Review the text before adding.</p>
                 <small>Your browser may send audio to its speech service. Voice entry replaces the selected field.</small>
               </div>
               <input id="list-tag" type="hidden" />

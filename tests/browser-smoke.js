@@ -89,13 +89,10 @@ const server = spawn(process.execPath, ["local-server.js"], { cwd: require("node
     });
     assert.equal(await page.locator("#list-item").inputValue(), "Broccoli");
     await page.locator('[data-voice-field="list-item"]').click();
-    await page.locator('[data-voice-field="list-quantity"]').click();
-    await page.evaluate(() => {
-      testRecognition.onresult({results:[Object.assign([{transcript:"2 heads"}], {isFinal:true})]});
-      testRecognition.onend();
-    });
+    assert.equal(await page.locator("[data-voice-field]").count(), 1);
+    assert.equal(await page.locator('[data-voice-field="list-item"]').getAttribute("aria-label"), "Start voice entry");
+    await page.locator("#list-quantity").fill("2 heads");
     assert.equal(await page.locator("#list-quantity").inputValue(), "2 heads");
-    await page.locator('[data-voice-field="list-quantity"]').click();
     await page.locator('[data-voice-field="list-item"]').click();
     await page.evaluate(() => {
       testRecognition.onerror({error:"not-allowed"});
