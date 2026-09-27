@@ -14,6 +14,8 @@
       lists: data.lists.map(r => record(r, false)),
       commonItems: data.profile?.preferences?.commonItems || structuredClone(defaults.commonItems),
       removedCommonItems: data.profile?.preferences?.removedCommonItems || [],
+      tagOrder: data.profile?.preferences?.tagOrder || structuredClone(defaults.tagOrder),
+      tagLabels: data.profile?.preferences?.tagLabels || structuredClone(defaults.tagLabels),
       itemTags: { [user.email]: data.tags || {} },
       _profileVersion: data.profile?.updated_at || null
     };
@@ -32,7 +34,10 @@
       }
       for (const row of old.values()) result.push({ kind, id: row.id, version: row._version, operation: "delete" });
     }
-    const prefs = s => ({ preferences: { commonItems: s.commonItems, removedCommonItems: s.removedCommonItems }, tags: s.itemTags[user.email] || {} });
+    const prefs = s => ({ preferences: {
+      commonItems: s.commonItems, removedCommonItems: s.removedCommonItems,
+      tagOrder: s.tagOrder, tagLabels: s.tagLabels
+    }, tags: s.itemTags[user.email] || {} });
     if (JSON.stringify(prefs(before)) !== JSON.stringify(prefs(after))) {
       result.push({ kind: "preferences", version: before._profileVersion, data: prefs(after) });
     }

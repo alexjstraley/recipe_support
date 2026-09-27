@@ -764,6 +764,35 @@ select:disabled {
   gap: 8px;
 }
 
+.label-settings-panel {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+}
+
+.label-settings-list {
+  display: grid;
+  gap: 8px;
+}
+
+.label-setting-row {
+  display: grid;
+  grid-template-columns: 18px minmax(100px, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.label-color {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+
+.label-setting-row input {
+  min-width: 0;
+}
+
 .tag-choice {
   min-height: 30px;
   padding: 0 10px;
@@ -781,31 +810,38 @@ select:disabled {
   box-shadow: 0 0 0 3px rgba(47, 107, 79, 0.14);
 }
 
-.tag-choice.tag-green {
+.tag-choice.tag-green,
+.label-color.tag-green {
   background: #dbeadd;
 }
 
-.tag-choice.tag-orange {
+.tag-choice.tag-orange,
+.label-color.tag-orange {
   background: #f4dfc5;
 }
 
-.tag-choice.tag-red {
+.tag-choice.tag-red,
+.label-color.tag-red {
   background: #f0d2cc;
 }
 
-.tag-choice.tag-blue {
+.tag-choice.tag-blue,
+.label-color.tag-blue {
   background: #dbe7f3;
 }
 
-.tag-choice.tag-purple {
+.tag-choice.tag-purple,
+.label-color.tag-purple {
   background: #e5def0;
 }
 
-.tag-choice.tag-yellow {
+.tag-choice.tag-yellow,
+.label-color.tag-yellow {
   background: #f6edcf;
 }
 
-.tag-choice.tag-pink {
+.tag-choice.tag-pink,
+.label-color.tag-pink {
   background: #f7d8e7;
 }
 
@@ -836,13 +872,14 @@ select:disabled {
   justify-content: space-between;
   gap: 10px;
   align-items: center;
-  min-height: 40px;
-  padding: 8px 10px;
+  min-height: 48px;
+  padding: 10px 12px;
   border-radius: 6px;
   background: transparent;
   color: var(--ink);
   text-align: left;
   font-weight: 800;
+  touch-action: manipulation;
 }
 
 .typeahead-option:hover,

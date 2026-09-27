@@ -68,6 +68,14 @@ const server = spawn(process.execPath, ["local-server.js"], { cwd: require("node
     await page.reload();
     await page.locator("#app-screen").waitFor({state:"visible"});
     await page.locator("#open-add-item").click();
+    await page.locator("#list-item").fill("car");
+    const carrotSuggestion = page.locator('.typeahead-option[data-item-name="Carrots"]');
+    await carrotSuggestion.waitFor({state:"visible"});
+    await carrotSuggestion.dispatchEvent("pointerdown", {button:0, pointerType:mobile ? "touch" : "mouse"});
+    assert.equal(await page.locator("#list-item").inputValue(), "Carrots", "A suggestion should select on the first pointer contact");
+    assert.equal(await page.locator("#list-quantity").evaluate(element => element === document.activeElement), true);
+    assert.equal(await page.locator("#item-suggestions").getAttribute("class"), "typeahead-results hidden");
+    await page.locator("#clear-list").click();
     await page.locator('[data-voice-field="list-item"]').click();
     assert.equal(await page.evaluate(() => testRecognition.continuous), true);
     await page.evaluate(() => {
@@ -144,6 +152,28 @@ const server = spawn(process.execPath, ["local-server.js"], { cwd: require("node
     await page.reload();
     await page.locator("#app-screen").waitFor({state:"visible"});
     assert.equal(await page.locator("[data-shopping-item]").count(), 4);
+    await page.locator("#profile-toggle").click();
+    await page.locator('.settings-panel:has(#label-settings-list) summary').click();
+    await page.locator('[data-label-name="green"]').fill("Produce");
+    await page.locator('[data-label-name="green"]').press("Tab");
+    await page.waitForFunction(() => document.querySelector("#sync-status").textContent === "Saved to Supabase");
+    await page.locator('[data-move-label="red"][data-direction="-1"]').click();
+    await page.waitForFunction(() => document.querySelector("#sync-status").textContent === "Saved to Supabase");
+    assert.deepEqual(workspace.profile.preferences.tagOrder.slice(0, 3), ["green", "red", "orange"]);
+    assert.equal(workspace.profile.preferences.tagLabels.green, "Produce");
+    await page.locator("#profile-close").click();
+    await page.locator("#open-add-item").click();
+    assert.deepEqual(await page.locator("#list-tag-picker [data-list-tag]").evaluateAll(buttons => buttons.slice(0, 3).map(button => button.textContent)), ["Produce", "Protein", "Dry"]);
+    await page.locator("#close-add-item").click();
+    await page.evaluate(() => {
+      state.lists[0].items = [
+        { id:"orange-item", name:"Orange group", quantity:"", tag:"orange", done:false },
+        { id:"green-item", name:"Green group", quantity:"", tag:"green", done:false },
+        { id:"red-item", name:"Red group", quantity:"", tag:"red", done:false }
+      ];
+      render();
+    });
+    assert.deepEqual(await page.locator("#active-list-items .item-name").allTextContents(), ["Green group", "Red group", "Orange group"]);
     await page.evaluate(() => { state.lists[0].items = []; saveState(); render(); });
     await page.waitForFunction(() => document.querySelector("#sync-status").textContent === "Saved to Supabase");
     await page.evaluate(() => { addGroceryItem(state.lists[0],"Beans","1/2 cup","green"); saveState(); render(); });
@@ -225,14 +255,44 @@ const server = spawn(process.execPath, ["local-server.js"], { cwd: require("node
     assert.equal(await page.locator("#recipe-servings").inputValue(), "");
     await page.locator('[data-view="groceries"]').click();
     // Stored content stays text even when it looks like HTML.
+    // A custom item learned through the normal add flow remains useful for voice matching.
+    await page.locator("#open-add-item").click();
+    await page.locator("#list-item").fill("Shiitake mushrooms");
+    await page.locator('#list-form button[type="submit"]').click();
+    await page.waitForFunction(() => document.querySelector("#sync-status").textContent === "Saved to Supabase");
+    await page.reload();
+    await page.locator("#app-screen").waitFor({state:"visible"});
+    await page.locator("#open-add-item").click();
+    await page.locator('[data-voice-field="list-item"]').click();
+    await page.evaluate(() => testRecognition.onresult({results:[Object.assign([{transcript:"two bags of shiitake mushroms"}], {isFinal:true})]}));
+    await page.locator('[data-voice-field="list-item"]').click();
+    assert.equal(await page.locator("#list-item").inputValue(), "Shiitake mushrooms");
+    assert.equal(await page.locator("#list-quantity").inputValue(), "2 bags");
+    await page.locator("#clear-list").click();
+    await page.locator('[data-voice-field="list-item"]').click();
+    await page.evaluate(() => testRecognition.onresult({results:[Object.assign([{transcript:"two heads of brocoli"}], {isFinal:true})]}));
+    assert.match(await page.locator("#list-item").inputValue(), /^broccoli$/i);
+    assert.equal(await page.locator("#list-quantity").inputValue(), "2 heads");
+    // Typing cancels recognition and protects both fields against late callbacks.
+    await page.locator("#list-item").fill("purple broccoli");
+    await page.evaluate(() => testRecognition.onresult({results:[Object.assign([{transcript:"three carrots"}], {isFinal:true})]}));
+    assert.equal(await page.locator("#list-item").inputValue(), "purple broccoli");
+    assert.equal(await page.locator("#list-quantity").inputValue(), "2 heads");
+    await page.locator("#close-add-item").click();
     await page.evaluate(() => { state.lists[0].items[0].name = '<img src=x onerror="window.xss=true">'; render(); });
     assert.equal(await page.locator("#active-list-items img").count(),0);
     assert.equal(await page.evaluate(()=>window.xss),undefined);
     if (mobile) assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),"Mobile item layout overflows");
     failSave = true;
-    await page.locator("[data-shopping-item]").click();
+    const failureItemId = await page.locator('[data-shopping-item][aria-pressed="false"]').first().getAttribute("data-shopping-item");
+    const failureItem = page.locator(`[data-shopping-item="${failureItemId}"]`);
+    await failureItem.click();
     await page.waitForFunction(() => document.querySelector("#sync-status").textContent.includes("Save failed"));
-    assert.equal(await page.locator("[data-shopping-item]").getAttribute("aria-pressed"),"true");
+    assert.equal(await failureItem.getAttribute("aria-pressed"),"false", "A failed save restores the last saved state");
+    assert.equal(await page.evaluate(value => {
+      const [listId, itemId] = value.split(":");
+      return failedDraft.lists.find(list => list.id === listId).items.find(item => item.id === itemId).done;
+    }, failureItemId), true, "The recovery draft retains the attempted change");
     await page.locator("#download-unsaved").waitFor({state:"visible"});
     // Recovery survives a mobile tab reload without automatically replaying the failed mutation.
     await page.reload();

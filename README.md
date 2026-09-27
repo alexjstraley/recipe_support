@@ -26,6 +26,8 @@ Import copies only records owned by the confirmed signed-in email. It keeps ingr
 
 Recipes, lists, ingredients, grocery items, sharing, remembered tags, and standard-item preferences are stored in Supabase. Owners edit; recipients with matching confirmed email addresses view. Adding an email grants access but does not send an invitation email.
 
+Label names and grocery-group order can be changed under **Profile → Labels**. The saved order is used in every tag picker and to group grocery-list items; for example, move Protein directly below Veg to keep those sections together.
+
 Each save is an atomic transaction under Row Level Security. Only changed records are sent. Record versions reject stale writes from another browser. **Download unsaved changes** preserves a failed draft as JSON. Refresh cloud data before retrying a conflict. A connection is required to save; offline edits are not queued.
 
 Use **Refresh cloud data** in Profile to see other-device changes or new shares. Data also loads at sign-in and page reload; there is no live push subscription.
@@ -39,7 +41,7 @@ Use **Refresh cloud data** in Profile to see other-device changes or new shares.
 Database and browser tests passed. Supabase security advisors reported no findings. Actual email delivery and login with your confirmed account remain to be exercised.
 # Voice entry
 
-Open a grocery list, select **Add item**, then tap the microphone beside the item field. Allow microphone access and speak your items, for example “add carrots and broccoli.” Tap the stop icon when finished. Type a quantity if needed. Review or edit the comma-separated items, then select **Add item** to save through the normal list sync. Each recording replaces the item field.
+Open a grocery list, select **Add item**, then tap the microphone beside the item field. Say “two heads of broccoli” to fill item **broccoli** and quantity **2 heads**, then tap stop. Item names are matched conservatively against the suggestion catalog, including items learned from past additions and accessible lists. Unfamiliar or ambiguous names stay as spoken; review and edit before saving. Spoken fractions such as “one and a half pounds” are supported. A recording without a quantity keeps the quantity already entered. Simple lists such as “carrots and broccoli” are supported; add items with different quantities one at a time. This improves interpretation of the transcript; it does not change the browser’s speech recognition service.
 
 Voice entry listens through pauses and resumes after brief speech-service endings, keeping the captured text. Partial transcripts are kept for review when recording ends. A session stops after one minute or three consecutive empty speech-service endings; microphone permission and connection errors stop immediately.
 
