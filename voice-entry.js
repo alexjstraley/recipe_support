@@ -1,4 +1,76 @@
-(() => {
+// Pure parser shared by browser voice entry and the regression tests.
+function parseVoiceGroceryPhrase(raw, knownItems = []) {
+  const text = raw.trim().replace(/^(?:please\s+)?add\s+/i, "").replace(/[.!?]+$/, "");
+  const key = value => value.toLowerCase().replace(/[-\s]+/g, " ").trim();
+  const known = [...new Map(knownItems.map(item => {
+    const name = typeof item === "string" ? item : item.name;
+    return [key(name), name];
+  })).values()];
+  function matchName(name) {
+    if (known.some(candidate => key(candidate) === key(name))) return name;
+    // Only accept a unique, very close spelling; never guess between ties.
+    const source = key(name);
+    if (source.length < 5) return name;
+    const scored = known.map(candidate => {
+      const target = key(candidate);
+      // Do not change short words (oat/goat, red/bed) inside a product name.
+      const sourceWords = source.split(" ");
+      const targetWords = target.split(" ");
+      if (sourceWords.length !== targetWords.length || sourceWords.some((word, i) =>
+        word.length <= 3 && word !== targetWords[i])) return { name: candidate, distance: Infinity };
+      let row = Array.from({ length: target.length + 1 }, (_, i) => i);
+      for (let i = 0; i < source.length; i++) {
+        const next = [i + 1];
+        for (let j = 0; j < target.length; j++) {
+          next.push(Math.min(next[j] + 1, row[j + 1] + 1, row[j] + (source[i] !== target[j])));
+        }
+        row = next;
+      }
+      return { name: candidate, distance: row[target.length] };
+    }).sort((a, b) => a.distance - b.distance);
+    const best = scored[0];
+    return best && best.distance <= (source.length >= 9 ? 2 : 1)
+      && best.distance < (scored[1]?.distance ?? Infinity) ? best.name : name;
+  }
+  // Preserve known product names that themselves start with numbers or contain "and".
+  if (known.some(candidate => key(candidate) === key(text))) return { name: text, quantity: "" };
+  const numbers = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20 };
+  const numberPattern = Object.keys(numbers).join("|");
+  const amount = new RegExp(`^(\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:\\.\\d+)?|[½¼¾]|${numberPattern}|half|quarter)(?:\\s+and\\s+(?:a\\s+)?(half|quarter))?\\s+`, "i");
+  const prefix = text.match(amount);
+  let quantity = "";
+  let name = text;
+  if (prefix) {
+    const value = prefix[1].toLowerCase();
+    quantity = String(numbers[value] ?? ({ half: "1/2", quarter: "1/4", "½": "1/2", "¼": "1/4", "¾": "3/4" }[value]) ?? value);
+    if (prefix[2]) quantity += prefix[2].toLowerCase() === "half" ? " 1/2" : " 1/4";
+    name = text.slice(prefix[0].length);
+    // "a half pound" and "a quarter of ...".
+    const fraction = name.match(/^(half|quarter)\s+/i);
+    if ((value === "a" || value === "an") && fraction) {
+      quantity = fraction[1].toLowerCase() === "half" ? "1/2" : "1/4";
+      name = name.slice(fraction[0].length);
+    }
+    if (value === "half" || value === "quarter") name = name.replace(/^a\s+/i, "");
+    const unit = name.match(/^(heads?|bunch(?:es)?|bags?|boxes?|bottles?|cans?|jars?|packs?|packages?|cartons?|dozen|cups?|tbsp|tablespoons?|tsp|teaspoons?|oz|ounces?|lbs?|pounds?|kg|kilograms?|g|grams?|ml|milliliters?|liters?|litres?|cloves?|slices?|pieces?)\s+/i);
+    if (unit) {
+      quantity += " " + unit[1].toLowerCase();
+      name = name.slice(unit[0].length);
+    }
+    name = name.replace(/^of\s+/i, "");
+  }
+  const parts = known.some(candidate => key(candidate) === key(name)) ? [name]
+    : name.split(/\s*,\s*(?:and\s+)?|\s+and\s+/i).filter(Boolean);
+  // The form has one quantity field. Do not assign the first quantity to other items.
+  if (parts.length > 1 && (quantity || parts.some(part => amount.test(part)))) {
+    return { name: text, quantity: "", needsSingleItem: true };
+  }
+  return { name: parts.map(matchName).join(", "), quantity };
+}
+
+if (typeof module !== "undefined") module.exports = { parseVoiceGroceryPhrase };
+
+if (typeof document !== "undefined") (() => {
   const dialog = document.querySelector("#add-item-dialog");
   const status = document.querySelector("#voice-status");
   const buttons = [...document.querySelectorAll("[data-voice-field]")];
@@ -45,6 +117,10 @@
       return;
     }
     const field = document.getElementById(button.dataset.voiceField);
+    const quantityField = document.getElementById("list-quantity");
+    const originalQuantity = quantityField.value;
+    const knownItems = typeof itemSuggestionCandidates === "function" ? itemSuggestionCandidates() : [];
+    let parsed;
     let recognition;
     let received = false;
     let failed = false;
@@ -74,10 +150,12 @@
       function writeText(raw) {
         if (!raw.trim()) return;
         received = true;
-        const text = field.id === "list-item"
-          ? raw.trim().replace(/^(?:please\s+)?add\s+/i, "").replace(/[.!?]+$/, "")
-            .split(/\s*,\s*(?:and\s+)?|\s+and\s+/i).map(name => name.trim()).filter(Boolean).join(", ")
-          : raw.trim();
+        parsed = field.id === "list-item" ? parseVoiceGroceryPhrase(raw, knownItems) : null;
+        const text = parsed ? parsed.name : raw.trim();
+        if (parsed) {
+          quantityField.value = (parsed.quantity || originalQuantity).slice(0, quantityField.maxLength);
+          quantityField.dispatchEvent(new Event("input", { bubbles: true }));
+        }
         field.value = text.slice(0, field.maxLength);
         field.dispatchEvent(new Event("input", { bubbles: true }));
       }
@@ -88,7 +166,9 @@
         current = null;
         resetButtons();
         if (!failed) status.textContent = received
-          ? "Text captured. Review it before adding your item."
+          ? parsed?.needsSingleItem
+            ? "Heard multiple items with quantities. Enter one item at a time so each quantity stays correct."
+            : "Text captured. Review the item and quantity before adding."
           : "No text captured. Check your microphone or try another browser.";
       }
       stopListening = () => {

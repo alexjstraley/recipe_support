@@ -80,11 +80,16 @@ const defaultState = {
   lists: [],
   itemTags: {},
   commonItems: COMMON_ITEMS,
-  removedCommonItems: []
+  removedCommonItems: [],
+  tagOrder: ["green", "orange", "red", "blue", "purple", "yellow", "pink"],
+  tagLabels: {
+    green: "Veg", orange: "Dry", red: "Protein", blue: "Liquid",
+    purple: "Frozen", yellow: "Cheese", pink: "Home"
+  }
 };
 
 const TAGS = ["green", "orange", "red", "blue", "purple", "yellow", "pink"];
-const TAG_LABELS = {
+const DEFAULT_TAG_LABELS = {
   green: "Veg",
   orange: "Dry",
   red: "Protein",
@@ -162,8 +167,17 @@ function ensureState(nextState) {
     });
   });
 
+  const requestedOrder = Array.isArray(nextState.tagOrder) ? nextState.tagOrder : [];
+  const tagOrder = [...new Set([...requestedOrder.filter((tag) => TAGS.includes(tag)), ...TAGS])];
+  const tagLabels = Object.fromEntries(TAGS.map((tag) => {
+    const label = String(nextState.tagLabels?.[tag] || "").trim();
+    return [tag, label || DEFAULT_TAG_LABELS[tag]];
+  }));
+
   return {
     ...nextState,
+    tagOrder,
+    tagLabels,
     removedCommonItems,
     commonItems: Object.values(commonItemsByName)
       .map((item) => ({ ...item, tag: normalizeTag(item.tag) }))
@@ -351,7 +365,8 @@ $("#export-data").addEventListener("click", () => {
     exportedAt: new Date().toISOString(), email: sessionEmail,
     recipes: currentRecipes(), lists: currentLists(),
     itemTags: state.itemTags[sessionEmail] || {},
-    commonItems: state.commonItems, removedCommonItems: state.removedCommonItems
+    commonItems: state.commonItems, removedCommonItems: state.removedCommonItems,
+    tagOrder: state.tagOrder, tagLabels: state.tagLabels
   };
   const blob = new Blob([JSON.stringify(exportable, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
@@ -575,8 +590,9 @@ $("#remove-edit-ingredient").addEventListener("click", () => {
 $("#edit-ingredient-dialog").addEventListener("close", () => {
   editingRecipeIngredientRef = null;
 });
-document.querySelectorAll("[data-list-tag]").forEach((button) => {
-  button.addEventListener("click", () => setListTag(button.dataset.listTag));
+$("#list-tag-picker").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-list-tag]");
+  if (button) setListTag(button.dataset.listTag);
 });
 $("#list-item").addEventListener("input", () => {
   applySuggestedTag("#list-item", "#list-tag");
@@ -673,6 +689,7 @@ function render() {
   if (!activeListId && lists.length) activeListId = lists[0].id;
   plannedRecipeIds = new Set([...plannedRecipeIds].filter((recipeId) => recipes.some((recipe) => recipe.id === recipeId)));
 
+  renderTagInputs();
   renderRecipes(recipes, lists);
   renderLists(lists);
   renderSharing(recipes, lists);
@@ -695,6 +712,7 @@ function renderProfile() {
   $("#account-message").textContent = "";
   $("#account-message").classList.remove("success");
   renderStandardItems();
+  renderLabelSettings();
 }
 
 
@@ -848,7 +866,7 @@ function renderRecipeIngredients(canEdit = true) {
             <span class="item-name">${escapeHtml(ingredient.name)}</span>
             <span class="item-subline">
               ${ingredient.quantity ? `<span class="item-quantity">${escapeHtml(ingredient.quantity)}</span>` : ""}
-              ${ingredient.tag ? `<span class="tag-pill tag-${escapeHtml(ingredient.tag)}">${escapeHtml(TAG_LABELS[ingredient.tag])}</span>` : ""}
+              ${ingredient.tag ? `<span class="tag-pill tag-${escapeHtml(ingredient.tag)}">${escapeHtml(tagLabel(ingredient.tag))}</span>` : ""}
             </span>
           </span>
           </button>
@@ -952,7 +970,7 @@ function renderActiveList(list) {
               <span class="item-name">${escapeHtml(item.name)}</span>
               <span class="item-subline">
                 ${item.quantity ? `<span class="item-quantity">${escapeHtml(item.quantity)}</span>` : ""}
-                ${item.tag ? `<span class="tag-pill tag-${escapeHtml(item.tag)}">${escapeHtml(TAG_LABELS[item.tag])}</span>` : ""}
+                ${item.tag ? `<span class="tag-pill tag-${escapeHtml(item.tag)}">${escapeHtml(tagLabel(item.tag))}</span>` : ""}
               </span>
             </span>
           </button>
@@ -1736,8 +1754,13 @@ function renderItemSuggestions() {
     button.dataset.itemTag = item.tag;
     button.innerHTML = `
       <span>${escapeHtml(item.name)}</span>
-      ${item.tag ? `<span class="tag-pill tag-${escapeHtml(item.tag)}">${escapeHtml(TAG_LABELS[item.tag])}</span>` : ""}
+      ${item.tag ? `<span class="tag-pill tag-${escapeHtml(item.tag)}">${escapeHtml(tagLabel(item.tag))}</span>` : ""}
     `;
+    button.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      chooseItemSuggestion(item.name, item.tag);
+    });
     button.addEventListener("click", () => chooseItemSuggestion(item.name, item.tag));
     container.append(button);
   });
@@ -1804,16 +1827,66 @@ function sortedItems(list) {
 }
 
 function tagSortValue(tag) {
-  const index = TAGS.indexOf(tag);
-  return index === -1 ? TAGS.length : index;
+  const index = state.tagOrder.indexOf(tag);
+  return index === -1 ? state.tagOrder.length : index;
 }
 
 function tagOptions(selectedTag) {
   const normalizedSelectedTag = normalizeTag(selectedTag);
   return [
     `<option value="">None</option>`,
-    ...TAGS.map((tag) => `<option value="${tag}" ${tag === normalizedSelectedTag ? "selected" : ""}>${TAG_LABELS[tag]}</option>`)
+    ...state.tagOrder.map((tag) => `<option value="${tag}" ${tag === normalizedSelectedTag ? "selected" : ""}>${escapeHtml(tagLabel(tag))}</option>`)
   ].join("");
+}
+
+function tagLabel(tag) {
+  return state.tagLabels?.[tag] || DEFAULT_TAG_LABELS[tag] || tag;
+}
+
+function renderTagInputs() {
+  for (const selector of ["#standard-item-tag", "#recipe-ingredient-tag", "#edit-item-tag"]) {
+    const select = $(selector);
+    const selected = select.value;
+    select.innerHTML = tagOptions(selected);
+  }
+  const picker = $("#list-tag-picker");
+  picker.innerHTML = state.tagOrder.map((tag) => `
+    <button class="tag-choice tag-${tag}" data-list-tag="${tag}" type="button">${escapeHtml(tagLabel(tag))}</button>
+  `).join("");
+  syncListTagPicker();
+}
+
+function renderLabelSettings() {
+  const container = $("#label-settings-list");
+  container.innerHTML = state.tagOrder.map((tag, index) => `
+    <div class="label-setting-row" data-label-row="${tag}">
+      <span class="label-color tag-${tag}" aria-hidden="true"></span>
+      <input data-label-name="${tag}" value="${escapeHtml(tagLabel(tag))}" maxlength="30" aria-label="Name for ${escapeHtml(tagLabel(tag))}" />
+      <button class="ghost small" data-move-label="${tag}" data-direction="-1" type="button" aria-label="Move ${escapeHtml(tagLabel(tag))} up" ${index === 0 ? "disabled" : ""}>&uarr;</button>
+      <button class="ghost small" data-move-label="${tag}" data-direction="1" type="button" aria-label="Move ${escapeHtml(tagLabel(tag))} down" ${index === state.tagOrder.length - 1 ? "disabled" : ""}>&darr;</button>
+    </div>
+  `).join("");
+
+  container.querySelectorAll("[data-label-name]").forEach((input) => input.addEventListener("change", () => {
+    const tag = input.dataset.labelName;
+    const label = input.value.trim();
+    state.tagLabels[tag] = label || DEFAULT_TAG_LABELS[tag];
+    renderLabelSettings();
+    renderTagInputs();
+    render();
+    saveState();
+  }));
+  container.querySelectorAll("[data-move-label]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const from = state.tagOrder.indexOf(button.dataset.moveLabel);
+    const to = from + Number(button.dataset.direction);
+    if (from < 0 || to < 0 || to >= state.tagOrder.length) return;
+    [state.tagOrder[from], state.tagOrder[to]] = [state.tagOrder[to], state.tagOrder[from]];
+    renderLabelSettings();
+    render();
+    saveState();
+    container.querySelector(`[data-move-label="${button.dataset.moveLabel}"][data-direction="${button.dataset.direction}"]`)?.focus();
+  }));
 }
 
 function arrayify(value) {
@@ -2055,7 +2128,11 @@ function escapeHtml(value) {
 
 $("#refresh-data").addEventListener("click", refreshWorkspace);
 $("#download-unsaved").addEventListener("click", () => {
-  if (failedDraft) downloadJSON({ email: sessionEmail, recipes: failedDraft.recipes, lists: failedDraft.lists, itemTags: failedDraft.itemTags, commonItems: failedDraft.commonItems }, "shopping-list-unsaved.json");
+  if (failedDraft) downloadJSON({
+    email: sessionEmail, recipes: failedDraft.recipes, lists: failedDraft.lists,
+    itemTags: failedDraft.itemTags, commonItems: failedDraft.commonItems,
+    tagOrder: failedDraft.tagOrder, tagLabels: failedDraft.tagLabels
+  }, "shopping-list-unsaved.json");
 });
 $("#import-local").addEventListener("click", async () => {
   if (busy) return;

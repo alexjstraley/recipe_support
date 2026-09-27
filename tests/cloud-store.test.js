@@ -2,7 +2,10 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const store = require("../cloud-store");
 const user = { id: "user-1", email: "owner@example.com" };
-const defaults = { recipes: [], lists: [], commonItems: [], removedCommonItems: [], itemTags: {} };
+const defaults = {
+  recipes: [], lists: [], commonItems: [], removedCommonItems: [], itemTags: {},
+  tagOrder: ["green", "red"], tagLabels: { green: "Veg", red: "Protein" }
+};
 test("decode keeps unspecified servings blank", () => {
   const row = { id: "r", owner_id: user.id, title: "Soup", servings: null, ingredients: [] };
   const state = store.decode({ recipes: [row], lists: [], tags: {}, profile: null }, user, defaults);
@@ -19,6 +22,17 @@ test("diff sends only changed records and versioned deletes", () => {
   const before = { ...defaults, recipes: [{ id: "a", ownerId: user.id, _version: "v1" }, { id: "b", ownerId: user.id, _version: "v2" }] };
   const after = structuredClone(before); after.recipes.shift();
   assert.deepEqual(store.changes(before, after, user), [{ kind: "recipe", id: "a", version: "v1", operation: "delete" }]);
+});
+test("label names and order round-trip through profile preferences", () => {
+  const profile = { preferences: { tagOrder: ["red", "green"], tagLabels: { green: "Produce", red: "Protein" } }, updated_at: "p1" };
+  const before = store.decode({ recipes: [], lists: [], tags: {}, profile }, user, defaults);
+  assert.deepEqual(before.tagOrder, ["red", "green"]);
+  assert.equal(before.tagLabels.green, "Produce");
+  const after = structuredClone(before);
+  after.tagOrder = ["green", "red"];
+  const changes = store.changes(before, after, user);
+  assert.equal(changes[0].kind, "preferences");
+  assert.deepEqual(changes[0].data.preferences.tagOrder, ["green", "red"]);
 });
 test("legacy import is deterministic, scoped to the matching email, and excludes credentials", async () => {
   const legacy = { users: { secret: "do not copy" }, recipes: [{ id: "recipe-old", owner: user.email, title: "Soup", ingredients: ["Beans"], sharedWith: [] }, { id: "other", owner: "other@example.com" }], lists: [] };

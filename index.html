@@ -113,6 +113,19 @@
         <details class="settings-panel">
           <summary>
             <span>
+              <strong>Labels</strong>
+              <small>Rename and reorder grocery groups</small>
+            </span>
+          </summary>
+          <div class="label-settings-panel">
+            <p class="hint">Items in grocery lists are grouped in this order. Use the arrows to change it.</p>
+            <div id="label-settings-list" class="label-settings-list"></div>
+          </div>
+        </details>
+
+        <details class="settings-panel">
+          <summary>
+            <span>
               <strong>Shared access</strong>
               <small>Recipes and lists with invited email addresses</small>
             </span>
@@ -333,20 +346,12 @@
                 <input id="list-quantity" maxlength="120" placeholder="2 heads" />
               </label>
               <div class="voice-help">
-                <p>Separate items with commas, or say “add carrots and broccoli.” Quantity and selected tag apply to every item added.</p>
+                <p>Say “two heads of broccoli” to fill the item and quantity. Previously added items help match names. For different quantities, add one item at a time.</p>
                 <p id="voice-status" role="status" aria-live="polite">Tap the microphone to speak, then tap stop. Review the text before adding.</p>
-                <small>Your browser may send audio to its speech service. Voice entry replaces the selected field.</small>
+                <small>Your browser may send audio to its speech service. Review the item name and quantity before adding.</small>
               </div>
               <input id="list-tag" type="hidden" />
-              <div class="tag-picker" aria-label="Item tag">
-                <button class="tag-choice tag-green" data-list-tag="green" type="button">Veg</button>
-                <button class="tag-choice tag-orange" data-list-tag="orange" type="button">Dry</button>
-                <button class="tag-choice tag-red" data-list-tag="red" type="button">Protein</button>
-                <button class="tag-choice tag-blue" data-list-tag="blue" type="button">Liquid</button>
-                <button class="tag-choice tag-purple" data-list-tag="purple" type="button">Frozen</button>
-                <button class="tag-choice tag-yellow" data-list-tag="yellow" type="button">Cheese</button>
-                <button class="tag-choice tag-pink" data-list-tag="pink" type="button">Home</button>
-              </div>
+              <div id="list-tag-picker" class="tag-picker" aria-label="Item tag"></div>
               <div class="form-actions modal-actions">
                 <button class="primary" type="submit">Add item</button>
                 <button id="clear-list" class="ghost" type="button">Clear item</button>
